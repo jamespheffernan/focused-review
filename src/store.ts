@@ -32,12 +32,20 @@ async function triggerNotionSync(projectId: string, weekOf: string): Promise<voi
   
   console.log(`🔄 Triggering Notion sync for project ${projectId}, week ${weekOf}`)
   
+  // Add to queue FIRST to prevent race conditions (even if sync succeeds immediately)
+  const queueItem = await NotionSyncQueue.addToQueue(projectId, weekOf)
+  if (!queueItem) {
+    console.log(`⏭️ Notion sync already queued/in-progress for project ${projectId}, week ${weekOf}`)
+    return
+  }
+  
   try {
     // Step 1: Get answers for this project and week
     const answers = await Answers.getProjectAnswersForWeek(projectId, weekOf)
     
     if (answers.length === 0) {
       console.log(`⏭️ No answers found for project ${projectId}, week ${weekOf} - skipping sync`)
+      await NotionSyncQueue.markCompleted(queueItem.id) // Remove from queue
       return
     }
     
@@ -59,19 +67,19 @@ async function triggerNotionSync(projectId: string, weekOf: string): Promise<voi
     
     if (result.success) {
       console.log(`✅ Notion sync completed for project ${projectId}`)
+      await NotionSyncQueue.markCompleted(queueItem.id) // Remove from queue
     } else if (result.skipped) {
       console.log(`⏭️ Notion sync skipped: ${result.reason}`)
-      // Don't queue if skipped (e.g., not configured, no page found, duplicate)
+      await NotionSyncQueue.markCompleted(queueItem.id) // Remove from queue (already synced)
     } else {
       console.error(`❌ Notion sync failed: ${result.error}`)
-      // Add to queue for retry
-      await NotionSyncQueue.addToQueue(projectId, weekOf)
+      await NotionSyncQueue.markFailed(queueItem.id, result.error || 'Unknown error')
       throw new Error(result.error || 'Unknown sync error')
     }
   } catch (error) {
     console.error('❌ Notion sync error:', error)
-    // Ensure it's in the queue
-    await NotionSyncQueue.addToQueue(projectId, weekOf)
+    // Mark as failed (already in queue from line above)
+    await NotionSyncQueue.markFailed(queueItem.id, error instanceof Error ? error.message : 'Unknown error')
     throw error
   }
 }

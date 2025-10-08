@@ -1336,24 +1336,43 @@ ipcMain.handle('notion:sync-review', async (event, projectId, weekOf, formattedM
       const pageId = response.results[0].id
       console.log(`✅ Found Notion page ${pageId} for project ${projectId}`)
       
-      // Step 2: Check for duplicate week (optional - can skip for MVP)
+      // Step 2: Check for duplicate week
+      // Notion API returns 100 blocks per page, so we need to paginate
       const weekString = `Week of ${weekOf}`
-      const existingBlocks = await notion.blocks.children.list({ block_id: pageId })
+      let hasMore = true
+      let startCursor = undefined
+      let blocksChecked = 0
+      const MAX_BLOCKS_TO_CHECK = 200 // Check last 200 blocks (should cover recent reviews)
       
-      for (const block of existingBlocks.results) {
-        if (block.type === 'paragraph' && block.paragraph?.rich_text) {
-          for (const richText of block.paragraph.rich_text) {
-            if (richText.plain_text && richText.plain_text.includes(weekString)) {
-              console.log(`⏭️ Review for ${weekOf} already exists, skipping`)
-              return {
-                success: true,
-                skipped: true,
-                reason: 'Review already exists for this week'
+      while (hasMore && blocksChecked < MAX_BLOCKS_TO_CHECK) {
+        const response = await notion.blocks.children.list({ 
+          block_id: pageId,
+          start_cursor: startCursor,
+          page_size: 100
+        })
+        
+        // Check this page of blocks for duplicate
+        for (const block of response.results) {
+          if (block.type === 'paragraph' && block.paragraph?.rich_text) {
+            for (const richText of block.paragraph.rich_text) {
+              if (richText.plain_text && richText.plain_text.includes(weekString)) {
+                console.log(`⏭️ Review for ${weekOf} already exists (found in block ${blocksChecked}), skipping`)
+                return {
+                  success: true,
+                  skipped: true,
+                  reason: 'Review already exists for this week'
+                }
               }
             }
           }
         }
+        
+        blocksChecked += response.results.length
+        hasMore = response.has_more
+        startCursor = response.next_cursor
       }
+      
+      console.log(`✅ No duplicate found (checked ${blocksChecked} blocks), proceeding with sync`)
       
       // Step 3: Convert markdown to Notion blocks
       const blocks = []
