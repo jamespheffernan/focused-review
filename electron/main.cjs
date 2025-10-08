@@ -1313,7 +1313,8 @@ ipcMain.handle('notion:sync-review', async (event, projectId, weekOf, formattedM
     
     try {
       // Step 1: Find Notion page by project ID
-      const response = await notion.databases.query({
+      // Note: In @notionhq/client v5.x, it's dataSources.query, not databases.query
+      const response = await notion.dataSources.query({
         database_id: notionDb,
         filter: {
           property: 'OF-ID',
