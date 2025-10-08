@@ -126,6 +126,22 @@ for (let i = 0; i < flattenedProjects.length; i++) {
       }
     }
     
+    // Try to get review dates with error handling
+    let lastReviewDate = null;
+    let nextReviewDate = null;
+    try {
+      const lastRev = project.lastReviewDate();
+      lastReviewDate = lastRev ? lastRev.toISOString() : null;
+    } catch (e) {
+      console.log('DEBUG: Error getting lastReviewDate for ' + project.name() + ': ' + e.message);
+    }
+    try {
+      const nextRev = project.nextReviewDate();
+      nextReviewDate = nextRev ? nextRev.toISOString() : null;
+    } catch (e) {
+      console.log('DEBUG: Error getting nextReviewDate for ' + project.name() + ': ' + e.message);
+    }
+    
     activeProjects.push({
       id: project.id(),
       name: project.name(),
@@ -133,8 +149,8 @@ for (let i = 0; i < flattenedProjects.length; i++) {
       deferDate: project.deferDate() ? project.deferDate().toISOString() : null,
       dueDate: project.dueDate() ? project.dueDate().toISOString() : null,
       reviewInterval: project.reviewInterval(),
-      lastReviewDate: project.lastReviewDate() ? project.lastReviewDate().toISOString() : null,
-      nextReviewDate: project.nextReviewDate() ? project.nextReviewDate().toISOString() : null,
+      lastReviewDate: lastReviewDate,
+      nextReviewDate: nextReviewDate,
       flagged: project.flagged(),
       estimatedMinutes: project.estimatedMinutes(),
       note: project.note() || '',
@@ -182,6 +198,9 @@ ipcMain.handle('omnifocus:get-projects', async () => {
       // Don't throw on stderr, just log it
     }
     
+    console.log('📊 JXA script output length:', projectOutput.length)
+    console.log('📊 First 500 chars of output:', projectOutput.substring(0, 500))
+    
     if (!projectOutput || projectOutput.trim() === '') {
       throw new Error('No projects found in OmniFocus')
     }
@@ -193,6 +212,11 @@ ipcMain.handle('omnifocus:get-projects', async () => {
     } catch (parseError) {
       console.error('Failed to parse JXA output as JSON:', parseError)
       throw new Error('Failed to parse OmniFocus project data')
+    }
+    
+    console.log('📊 Parsed', projectData.length, 'projects from JXA')
+    if (projectData.length > 0) {
+      console.log('📊 First project from JXA:', JSON.stringify(projectData[0], null, 2).substring(0, 800))
     }
     
     const projects = []

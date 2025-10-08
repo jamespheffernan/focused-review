@@ -23,17 +23,28 @@ export async function loadQueueFromCache(): Promise<ProjectDTO[]> {
     
     console.log(`Loaded ${allProjects.length} active projects from cache`)
     
+    // Debug: Log first few projects to see what data we have
+    console.log('Sample projects:', allProjects.slice(0, 3).map(p => ({
+      name: p.name,
+      nextReviewDate: p.nextReviewDate,
+      lastReviewed: p.lastReviewed,
+      reviewIntervalDays: p.reviewIntervalDays
+    })))
+    
     // Filter to only projects due or overdue for review
     const now = new Date()
     const dueProjects = allProjects.filter(project => {
       // If project has no nextReviewDate, exclude it from review queue
       // (projects without review schedules aren't tracked for review)
       if (!project.nextReviewDate) {
+        console.log(`⚠️ Project "${project.name}" has no nextReviewDate - excluding from review queue`)
         return false
       }
       
       const nextReview = new Date(project.nextReviewDate)
-      return nextReview <= now
+      const isDue = nextReview <= now
+      console.log(`Project "${project.name}": nextReview=${nextReview.toISOString()}, isDue=${isDue}`)
+      return isDue
     })
     
     // Sort by most overdue first (earliest nextReviewDate first)
@@ -257,6 +268,9 @@ export async function importOmniFocusProjectsWithTasks(projects: any[]) {
       console.log('Sample project structure:', {
         id: projects[0].id,
         name: projects[0].name,
+        nextReviewDate: projects[0].nextReviewDate,
+        lastReviewed: projects[0].lastReviewed,
+        reviewIntervalDays: projects[0].reviewIntervalDays,
         hasTasks: !!projects[0].tasks,
         taskCount: projects[0].tasks?.length || 0
       })
