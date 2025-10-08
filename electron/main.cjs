@@ -1378,18 +1378,33 @@ ipcMain.handle('notion:sync-review', async (event, projectId, weekOf, formattedM
       }
       
       // Step 4: Append blocks to Notion page
+      // Notion API limits to 100 blocks per request, so batch if needed
       if (blocks.length > 0) {
-        await notion.blocks.children.append({
-          block_id: pageId,
-          children: blocks
-        })
+        const BATCH_SIZE = 100
+        const totalBatches = Math.ceil(blocks.length / BATCH_SIZE)
         
-        console.log(`✅ Successfully synced ${blocks.length} blocks to Notion page ${pageId}`)
+        console.log(`📦 Appending ${blocks.length} blocks in ${totalBatches} batch(es)...`)
+        
+        for (let i = 0; i < blocks.length; i += BATCH_SIZE) {
+          const batch = blocks.slice(i, i + BATCH_SIZE)
+          const batchNum = Math.floor(i / BATCH_SIZE) + 1
+          
+          console.log(`📦 Appending batch ${batchNum}/${totalBatches} (${batch.length} blocks)...`)
+          
+          await notion.blocks.children.append({
+            block_id: pageId,
+            children: batch
+          })
+          
+          console.log(`✅ Batch ${batchNum}/${totalBatches} appended successfully`)
+        }
+        
+        console.log(`✅ Successfully synced all ${blocks.length} blocks to Notion page ${pageId}`)
       }
       
       return {
         success: true,
-        message: `Synced ${blocks.length} blocks to Notion`
+        message: `Synced ${blocks.length} blocks to Notion in ${Math.ceil(blocks.length / 100)} batch(es)`
       }
     } catch (notionError) {
       console.error('❌ Notion API error:', notionError)
