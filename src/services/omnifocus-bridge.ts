@@ -144,6 +144,26 @@ class OmniFocusBridge {
   }
 
   /**
+   * Mark project as reviewed in OmniFocus
+   */
+  async markProjectReviewed(projectId: string): Promise<{success: boolean; projectId?: string; lastReviewDate?: string | null; nextReviewDate?: string | null; error?: string}> {
+    const status = this.getIntegrationStatus()
+    
+    switch (status.method) {
+      case 'electron':
+        if (!window.electronAPI) {
+          return { success: false, error: 'Electron API not available' }
+        }
+        return await window.electronAPI.omnifocus.markProjectReviewed(projectId)
+      case 'applescript':
+      case 'file-upload':
+      default:
+        console.warn('Mark reviewed not implemented for this integration method')
+        return { success: false, error: 'Integration method not supported' }
+    }
+  }
+
+  /**
    * Create a new task in OmniFocus
    */
   async createTask(projectId: string, taskName: string): Promise<{success: boolean; taskId?: string; error?: string}> {
@@ -289,6 +309,8 @@ class OmniFocusBridge {
         deferDate: project.deferDate,
         dueDate: project.dueDate,
         reviewIntervalDays: project.reviewIntervalDays || 7,
+        lastReviewed: project.lastReviewDate,
+        nextReviewDate: project.nextReviewDate,
         tags: project.tags || [],
         flagged: Boolean(project.flagged),
         estimatedMinutes: project.estimatedMinutes,

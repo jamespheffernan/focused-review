@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getProjectTasks: (projectId) => ipcRenderer.invoke('omnifocus:get-project-tasks', projectId),
     getContexts: () => ipcRenderer.invoke('omnifocus:get-contexts'),
     updateProject: (projectId, updates) => ipcRenderer.invoke('omnifocus:update-project', projectId, updates),
+    markProjectReviewed: (projectId) => ipcRenderer.invoke('omnifocus:mark-project-reviewed', projectId),
     createTask: (projectId, taskName) => ipcRenderer.invoke('omnifocus:create-task', projectId, taskName),
     setTaskContext: (taskId, contextName) => ipcRenderer.invoke('omnifocus:set-task-context', taskId, contextName),
     setTaskDueDate: (taskId, dueDate) => ipcRenderer.invoke('omnifocus:set-task-due-date', taskId, dueDate),

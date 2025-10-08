@@ -6,6 +6,7 @@ export interface ElectronAPI {
     getProjectTasks: (projectId: string) => Promise<any[]>
     getContexts: () => Promise<{ success: boolean; contexts: Array<{id: string; name: string}>; error?: string }>
     updateProject: (projectId: string, updates: any) => Promise<boolean>
+    markProjectReviewed: (projectId: string) => Promise<{ success: boolean; projectId?: string; lastReviewDate?: string | null; nextReviewDate?: string | null; error?: string }>
     createTask: (projectId: string, taskName: string) => Promise<{ success: boolean; taskId?: string; taskName?: string; error?: string }>
     setTaskContext: (taskId: string, contextName: string) => Promise<{ success: boolean; taskId?: string; contextName?: string; error?: string }>
     setTaskDueDate: (taskId: string, dueDate: string | null) => Promise<{ success: boolean; taskId?: string; dueDate?: string | null; error?: string }>

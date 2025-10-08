@@ -10,6 +10,7 @@ export interface OmniFocusProject {
   reviewIntervalDays: number
   tags: string[]
   lastReviewed?: string
+  nextReviewDate?: string
   notes?: string
   nextAction?: string
   context?: string
@@ -92,6 +93,20 @@ class OmniFocusService {
       return await omnifocusBridge.updateProject(projectId, updates)
     } catch (error) {
       console.error('Error updating OmniFocus project:', error)
+      return false
+    }
+  }
+
+  /**
+   * Mark project as reviewed in OmniFocus
+   */
+  async markProjectReviewed(projectId: string): Promise<boolean> {
+    try {
+      const { omnifocusBridge } = await import('./omnifocus-bridge')
+      const result = await omnifocusBridge.markProjectReviewed(projectId)
+      return result.success
+    } catch (error) {
+      console.error('Error marking project as reviewed:', error)
       return false
     }
   }

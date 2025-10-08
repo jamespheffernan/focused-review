@@ -7,7 +7,7 @@ export type TaskStatus = 'available'|'next'|'blocked'|'completed'
 export interface ProjectDTO {
   id: string; name: string; status: ProjectStatus
   deferDate?: string; dueDate?: string; reviewIntervalDays: number
-  tags: string[]; lastReviewed?: string
+  tags: string[]; lastReviewed?: string; nextReviewDate?: string
   notes?: string  // Project notes - first line may contain Notion deep link
 }
 

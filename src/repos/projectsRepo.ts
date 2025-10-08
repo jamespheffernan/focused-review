@@ -15,16 +15,39 @@ export async function loadQueueFromCache(): Promise<ProjectDTO[]> {
   try {
     console.time('loadQueueFromCache')
     
-    // Load projects directly from IndexedDB - no OmniFocus sync
-    const projects = await db.projects
+    // Load active projects from IndexedDB
+    const allProjects = await db.projects
       .where('status')
       .notEqual('dropped')
       .toArray()
     
-    console.log(`Loaded ${projects.length} projects from cache`)
+    console.log(`Loaded ${allProjects.length} active projects from cache`)
+    
+    // Filter to only projects due or overdue for review
+    const now = new Date()
+    const dueProjects = allProjects.filter(project => {
+      // If project has no nextReviewDate, exclude it from review queue
+      // (projects without review schedules aren't tracked for review)
+      if (!project.nextReviewDate) {
+        return false
+      }
+      
+      const nextReview = new Date(project.nextReviewDate)
+      return nextReview <= now
+    })
+    
+    // Sort by most overdue first (earliest nextReviewDate first)
+    dueProjects.sort((a, b) => {
+      const dateA = new Date(a.nextReviewDate!).getTime()
+      const dateB = new Date(b.nextReviewDate!).getTime()
+      return dateA - dateB
+    })
+    
+    console.log(`Filtered to ${dueProjects.length} projects due for review`)
+    console.log(`Most overdue: ${dueProjects[0]?.name} (due ${dueProjects[0]?.nextReviewDate})`)
     console.timeEnd('loadQueueFromCache')
     
-    return projects
+    return dueProjects
   } catch (error) {
     console.error('Error loading queue from cache:', error)
     return []
@@ -163,7 +186,12 @@ export async function markReviewed(projectID: string, dateISO: string) {
   
   // Update OmniFocus if available
   try {
-    await omnifocusService.updateProjectMetadata(projectID, { lastReviewed: dateISO })
+    const success = await omnifocusService.markProjectReviewed(projectID)
+    if (success) {
+      console.log(`✅ Project ${projectID} marked as reviewed in OmniFocus`)
+    } else {
+      console.warn(`⚠️ Failed to mark project ${projectID} as reviewed in OmniFocus`)
+    }
   } catch (error) {
     console.error('Error updating OmniFocus:', error)
     // Continue anyway - local update succeeded
@@ -249,6 +277,7 @@ export async function importOmniFocusProjectsWithTasks(projects: any[]) {
         reviewIntervalDays: project.reviewIntervalDays || 7,
         tags: project.tags || [],
         lastReviewed: project.lastReviewed || null,
+        nextReviewDate: project.nextReviewDate || null,
         notes: project.notes || undefined  // Project notes (first line may contain Notion deep link)
       }
       projectDTOs.push(projectDTO)
