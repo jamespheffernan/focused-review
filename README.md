@@ -33,8 +33,32 @@ Quickly access Notion documentation for your projects during reviews:
    - Click the icon OR press `Ctrl+N` / `Cmd+N` to open the Notion page
 
 3. **Supported URL Formats**:
-   - `https://www.notion.so/{workspace}/{page-id}`
-   - `https://notion.so/{workspace}/{page-id}`
+   - `notion://www.notion.so/{workspace}/{page-id}` (Notion app deep link - recommended)
+   - `https://www.notion.so/{workspace}/{page-id}` (Web browser link)
+   - `https://notion.so/{workspace}/{page-id}` (Web browser link)
+
+### Smart Review Filtering
+The app automatically shows only projects that are **due or overdue** for review:
+
+- **Intelligent Filtering**: Only projects with `nextReviewDate ≤ today` appear in your review queue
+- **Priority Sorting**: Most overdue projects appear first, helping you focus on what needs attention
+- **Synced with OmniFocus**: Review dates are synchronized from OmniFocus project settings
+- **Automatic Updates**: When you mark a project as reviewed, OmniFocus is immediately updated
+
+#### How Review Filtering Works
+
+1. **In OmniFocus**: Set review intervals for your projects (e.g., weekly, monthly)
+   - OmniFocus automatically calculates the next review date based on your interval
+
+2. **In Weekly Review HUD**:
+   - Sync from OmniFocus to import projects with their review dates
+   - Only projects due for review will appear in your queue
+   - Projects are automatically sorted by how overdue they are
+
+3. **Mark as Reviewed**:
+   - Click "Mark Reviewed" button to update both the app and OmniFocus
+   - OmniFocus's `lastReviewDate` is set to now, and `nextReviewDate` is recalculated
+   - The project won't appear again until its next review is due
 
 ## Installation
 
@@ -174,6 +198,54 @@ npm run electron:build
 - The app uses smart caching to minimize OmniFocus queries
 - Only sync when needed using the "Sync from OmniFocus" button
 - Check the "Last synced" timestamp to avoid redundant syncs
+
+## Troubleshooting
+
+### No projects appear in my queue
+
+**Problem**: After syncing, no projects show up in the review queue.
+
+**Solutions**:
+1. **Check OmniFocus Review Dates**: Make sure your projects have review intervals set in OmniFocus
+   - Open project in OmniFocus → Inspector → Review section
+   - Set a review interval (e.g., 1 week, 2 weeks, 1 month)
+
+2. **Check if projects are due**: The app only shows projects where `nextReviewDate ≤ today`
+   - Projects not due yet won't appear
+   - Check console logs for filtering details
+
+3. **Verify OmniFocus is running**: The app requires OmniFocus to be running to sync data
+
+### "Mark Reviewed" doesn't update OmniFocus
+
+**Problem**: Clicking "Mark Reviewed" updates the app but not OmniFocus.
+
+**Solutions**:
+1. **Ensure OmniFocus is running**: The app requires OmniFocus to be open
+2. **Check console logs**: Look for errors in the developer console (View → Toggle Developer Tools)
+3. **Try manual review in OmniFocus**: Right-click project → Review → Mark Reviewed
+4. **Re-sync**: Click "Sync from OmniFocus" to refresh data
+
+### Projects I already reviewed keep appearing
+
+**Problem**: Projects reappear after marking them as reviewed.
+
+**Solutions**:
+1. **Clear IndexedDB cache**: 
+   - Open Developer Tools → Application → IndexedDB → Clear
+   - Re-sync from OmniFocus
+2. **Check OmniFocus**: Verify the `lastReviewDate` was actually updated in OmniFocus
+3. **Restart the app**: Sometimes a fresh start helps sync state
+
+### Debug Mode
+
+To see detailed logging for troubleshooting:
+1. Open Developer Tools: `View → Toggle Developer Tools`
+2. Go to Console tab
+3. Look for messages about:
+   - Project filtering: "Filtered to X projects due for review"
+   - Mark reviewed: "Project X marked as reviewed in OmniFocus"
+   - Sync operations: "Loaded X projects from cache"
 
 ## Contributing
 

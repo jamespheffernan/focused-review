@@ -34,6 +34,13 @@ export class ReviewDB extends Dexie {
       sessions: 'id, startedAt',
       tasks: 'id, projectId, status, completed, [projectId+status], [projectId+completed], dueDate, flagged, lastModified, syncState'
     })
+    // Version 5: Add nextReviewDate index for review filtering
+    this.version(5).stores({
+      projects: 'id, lastReviewed, status, nextReviewDate',
+      answers: 'id, projectID, questionID, weekOf, [projectID+questionID], [projectID+weekOf]',
+      sessions: 'id, startedAt',
+      tasks: 'id, projectId, status, completed, [projectId+status], [projectId+completed], dueDate, flagged, lastModified, syncState'
+    })
   }
 }
 export const db = new ReviewDB()

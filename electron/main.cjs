@@ -133,6 +133,8 @@ for (let i = 0; i < flattenedProjects.length; i++) {
       deferDate: project.deferDate() ? project.deferDate().toISOString() : null,
       dueDate: project.dueDate() ? project.dueDate().toISOString() : null,
       reviewInterval: project.reviewInterval(),
+      lastReviewDate: project.lastReviewDate() ? project.lastReviewDate().toISOString() : null,
+      nextReviewDate: project.nextReviewDate() ? project.nextReviewDate().toISOString() : null,
       flagged: project.flagged(),
       estimatedMinutes: project.estimatedMinutes(),
       note: project.note() || '',
@@ -214,6 +216,8 @@ ipcMain.handle('omnifocus:get-projects', async () => {
           deferDate: project.deferDate,
           dueDate: project.dueDate,
           reviewIntervalDays: project.reviewInterval || 7,
+          lastReviewDate: project.lastReviewDate,
+          nextReviewDate: project.nextReviewDate,
           flagged: Boolean(project.flagged),
           estimatedMinutes: project.estimatedMinutes,
           note: project.note || '',
@@ -232,6 +236,8 @@ ipcMain.handle('omnifocus:get-projects', async () => {
       deferDate: project.deferDate,
       dueDate: project.dueDate,
       reviewIntervalDays: project.reviewIntervalDays || 7,
+      lastReviewDate: project.lastReviewDate,
+      nextReviewDate: project.nextReviewDate,
       flagged: Boolean(project.flagged),
       estimatedMinutes: project.estimatedMinutes,
       note: project.note || '',
@@ -355,6 +361,87 @@ ipcMain.handle('omnifocus:update-project', async (event, projectId, updates) => 
   } catch (error) {
     console.error('AppleScript update error:', error)
     return false
+  }
+})
+
+ipcMain.handle('omnifocus:mark-project-reviewed', async (event, projectId) => {
+  try {
+    console.log(`Marking project ${projectId} as reviewed`)
+    
+    // First check if OmniFocus is running
+    const checkScript = `tell application "System Events" to return (name of processes) contains "OmniFocus"`
+    const { stdout: isRunningOutput } = await execAsync(`osascript -e '${checkScript}'`)
+    
+    if (!isRunningOutput.trim().toLowerCase().includes('true')) {
+      return { success: false, error: 'OmniFocus is not running. Please start OmniFocus and try again.' }
+    }
+    
+    // Create temporary JXA script for marking project as reviewed
+    const tempJxaPath = path.join(require('os').tmpdir(), 'mark_project_reviewed_jxa.js')
+    const jxaScript = `const of = Application('OmniFocus');
+const doc = of.defaultDocument;
+
+// Find the project by ID
+const projects = doc.flattenedProjects();
+let targetProject = null;
+
+for (let i = 0; i < projects.length; i++) {
+  if (projects[i].id() === '${projectId}') {
+    targetProject = projects[i];
+    break;
+  }
+}
+
+if (!targetProject) {
+  throw new Error('Project not found');
+}
+
+// Mark as reviewed (set last review date to now)
+targetProject.lastReviewDate = new Date();
+
+// Return success with updated dates
+JSON.stringify({
+  success: true,
+  projectId: targetProject.id(),
+  lastReviewDate: targetProject.lastReviewDate() ? targetProject.lastReviewDate().toISOString() : null,
+  nextReviewDate: targetProject.nextReviewDate() ? targetProject.nextReviewDate().toISOString() : null
+});`
+    
+    // Write the JXA script to temporary file
+    await fs.writeFile(tempJxaPath, jxaScript)
+    
+    // Execute the JXA script
+    const { stdout: resultOutput, stderr } = await execAsync(`osascript -l JavaScript "${tempJxaPath}"`)
+    
+    // Clean up temporary file
+    try {
+      await fs.unlink(tempJxaPath)
+    } catch (cleanupError) {
+      console.warn('Failed to clean up temporary JXA file:', cleanupError.message)
+    }
+    
+    if (stderr) {
+      console.error('JXA stderr:', stderr)
+      return { success: false, error: stderr }
+    }
+    
+    if (!resultOutput || resultOutput.trim() === '') {
+      return { success: false, error: 'No output from JXA script' }
+    }
+    
+    // Parse the JSON result
+    try {
+      const result = JSON.parse(resultOutput.trim())
+      console.log('Project marked as reviewed:', result)
+      return result
+    } catch (parseError) {
+      console.error('Failed to parse JXA output:', parseError)
+      return { success: false, error: 'Failed to parse result' }
+    }
+    
+  } catch (error) {
+    console.error('Error marking project as reviewed:', error)
+    return { success: false, error: error.message }
   }
 })
 
@@ -1111,11 +1198,11 @@ ipcMain.handle('open-external-url', async (event, url) => {
       }
     }
 
-    // Security: Only allow https:// and http:// protocols
-    if (!['http:', 'https:'].includes(urlObj.protocol)) {
+    // Security: Only allow https://, http://, and notion:// protocols
+    if (!['http:', 'https:', 'notion:'].includes(urlObj.protocol)) {
       return {
         success: false,
-        error: `Unsupported protocol: ${urlObj.protocol}. Only http:// and https:// are allowed.`
+        error: `Unsupported protocol: ${urlObj.protocol}. Only http://, https://, and notion:// are allowed.`
       }
     }
 
