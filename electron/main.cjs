@@ -1289,7 +1289,8 @@ ipcMain.handle('open-external-url', async (event, url) => {
 })
 
 // IPC handlers for Notion sync
-ipcMain.handle('notion:sync-review', async (event, projectId, weekOf) => {
+// This handler receives formatted markdown from the renderer and appends it to Notion
+ipcMain.handle('notion:sync-review', async (event, projectId, weekOf, formattedMarkdown) => {
   try {
     console.log(`🔄 Notion sync requested for project ${projectId}, week ${weekOf}`)
     
@@ -1310,10 +1311,8 @@ ipcMain.handle('notion:sync-review', async (event, projectId, weekOf) => {
     const { Client } = require('@notionhq/client')
     const notion = new Client({ auth: notionToken })
     
-    // TODO: Implement actual sync logic
-    // For now, just verify we can connect to Notion
     try {
-      // Test connection by querying the database
+      // Step 1: Find Notion page by project ID
       const response = await notion.databases.query({
         database_id: notionDb,
         filter: {
@@ -1334,12 +1333,63 @@ ipcMain.handle('notion:sync-review', async (event, projectId, weekOf) => {
         }
       }
       
-      console.log(`✅ Notion sync handler called - found page for project ${projectId}`)
-      console.log('📝 Full sync implementation coming in next commit')
+      const pageId = response.results[0].id
+      console.log(`✅ Found Notion page ${pageId} for project ${projectId}`)
+      
+      // Step 2: Check for duplicate week (optional - can skip for MVP)
+      const weekString = `Week of ${weekOf}`
+      const existingBlocks = await notion.blocks.children.list({ block_id: pageId })
+      
+      for (const block of existingBlocks.results) {
+        if (block.type === 'paragraph' && block.paragraph?.rich_text) {
+          for (const richText of block.paragraph.rich_text) {
+            if (richText.plain_text && richText.plain_text.includes(weekString)) {
+              console.log(`⏭️ Review for ${weekOf} already exists, skipping`)
+              return {
+                success: true,
+                skipped: true,
+                reason: 'Review already exists for this week'
+              }
+            }
+          }
+        }
+      }
+      
+      // Step 3: Convert markdown to Notion blocks
+      const blocks = []
+      const lines = formattedMarkdown.split('\n')
+      
+      for (const line of lines) {
+        const trimmed = line.trim()
+        
+        if (!trimmed) continue
+        
+        if (trimmed === '---') {
+          blocks.push({ object: 'block', type: 'divider', divider: {} })
+        } else {
+          blocks.push({
+            object: 'block',
+            type: 'paragraph',
+            paragraph: {
+              rich_text: [{ type: 'text', text: { content: line } }]
+            }
+          })
+        }
+      }
+      
+      // Step 4: Append blocks to Notion page
+      if (blocks.length > 0) {
+        await notion.blocks.children.append({
+          block_id: pageId,
+          children: blocks
+        })
+        
+        console.log(`✅ Successfully synced ${blocks.length} blocks to Notion page ${pageId}`)
+      }
       
       return {
         success: true,
-        message: 'Notion connection verified, full sync pending'
+        message: `Synced ${blocks.length} blocks to Notion`
       }
     } catch (notionError) {
       console.error('❌ Notion API error:', notionError)

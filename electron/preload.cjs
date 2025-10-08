@@ -33,7 +33,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Notion sync operations
   notion: {
-    syncReview: (projectId, weekOf) => ipcRenderer.invoke('notion:sync-review', projectId, weekOf),
+    syncReview: (projectId, weekOf, formattedMarkdown) => ipcRenderer.invoke('notion:sync-review', projectId, weekOf, formattedMarkdown),
     isConfigured: () => ipcRenderer.invoke('notion:is-configured')
   },
   

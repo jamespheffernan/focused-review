@@ -20,6 +20,7 @@ const FALLBACK_QUESTIONS: QuestionDTO[] = [
 
 /**
  * Trigger Notion sync for a project's weekly review
+ * Fetches answers, formats as markdown, and sends to main process
  * Non-blocking - fires and forgets, errors are added to retry queue
  */
 async function triggerNotionSync(projectId: string, weekOf: string): Promise<void> {
@@ -32,13 +33,35 @@ async function triggerNotionSync(projectId: string, weekOf: string): Promise<voi
   console.log(`🔄 Triggering Notion sync for project ${projectId}, week ${weekOf}`)
   
   try {
-    const result = await window.electronAPI.notion.syncReview(projectId, weekOf)
+    // Step 1: Get answers for this project and week
+    const answers = await Answers.getProjectAnswersForWeek(projectId, weekOf)
+    
+    if (answers.length === 0) {
+      console.log(`⏭️ No answers found for project ${projectId}, week ${weekOf} - skipping sync`)
+      return
+    }
+    
+    console.log(`✅ Found ${answers.length} answers for project ${projectId}`)
+    
+    // Step 2: Get questions for formatting
+    const hasHistory = await Answers.hasBeenReviewedBefore(projectId)
+    const questions = await getQuestionsForProject(projectId, hasHistory)
+    
+    // Step 3: Format as markdown using review-formatter
+    // Import dynamically to avoid circular dependencies
+    const { formatReviewAsMarkdown } = await import('./services/review-formatter')
+    const markdown = formatReviewAsMarkdown(answers, questions, weekOf)
+    
+    console.log(`✅ Formatted review as markdown (${markdown.length} characters)`)
+    
+    // Step 4: Send to main process for Notion API call
+    const result = await window.electronAPI.notion.syncReview(projectId, weekOf, markdown)
     
     if (result.success) {
       console.log(`✅ Notion sync completed for project ${projectId}`)
     } else if (result.skipped) {
       console.log(`⏭️ Notion sync skipped: ${result.reason}`)
-      // Don't queue if skipped (e.g., not configured, no page found)
+      // Don't queue if skipped (e.g., not configured, no page found, duplicate)
     } else {
       console.error(`❌ Notion sync failed: ${result.error}`)
       // Add to queue for retry

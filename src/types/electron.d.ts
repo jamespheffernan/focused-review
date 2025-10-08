@@ -27,7 +27,7 @@ export interface ElectronAPI {
   }
   
   notion: {
-    syncReview: (projectId: string, weekOf?: string) => Promise<{ 
+    syncReview: (projectId: string, weekOf: string, formattedMarkdown: string) => Promise<{ 
       success: boolean
       skipped?: boolean
       reason?: string
