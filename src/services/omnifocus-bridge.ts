@@ -21,6 +21,8 @@ export interface OmniFocusBridgeProject {
   deferDate?: string
   dueDate?: string
   reviewIntervalDays: number
+  lastReviewed?: string
+  nextReviewDate?: string
   tags: string[]
   flagged?: boolean
   estimatedMinutes?: number
@@ -320,6 +322,15 @@ class OmniFocusBridge {
       
       const totalTasks = convertedProjects.reduce((sum, p) => sum + (p.tasks?.length || 0), 0)
       console.log(`Bridge converted projects with ${totalTasks} total tasks`)
+      
+      // DEBUG: Check if review dates survived conversion
+      if (convertedProjects.length > 0) {
+        console.log('🔍 First converted project:', {
+          name: convertedProjects[0].name,
+          lastReviewed: convertedProjects[0].lastReviewed,
+          nextReviewDate: convertedProjects[0].nextReviewDate
+        })
+      }
       
       return convertedProjects
     } catch (error) {

@@ -55,6 +55,8 @@ class OmniFocusService {
         deferDate: p.deferDate,
         dueDate: p.dueDate,
         reviewIntervalDays: p.reviewIntervalDays,
+        lastReviewed: p.lastReviewed,  // CRITICAL: Preserve review dates!
+        nextReviewDate: p.nextReviewDate,  // CRITICAL: Preserve review dates!
         tags: p.tags,
         flagged: p.flagged,
         estimatedMinutes: p.estimatedMinutes,
