@@ -1,0 +1,158 @@
+import { useState, useEffect } from 'react'
+import type { TaskDTO } from '../types'
+import { fetchTasksForProject, createTask } from '../repos/tasksRepo'
+import TaskItem from './TaskItem'
+import NewTaskForm from './NewTaskForm'
+
+interface TaskListProps {
+  projectId: string
+  onTaskUpdate: (taskId: string, updates: Partial<TaskDTO>) => void
+  onTaskDelete: (taskId: string) => void
+  showFilter?: boolean
+  showStatistics?: boolean
+}
+
+export default function TaskList({ 
+  projectId, 
+  onTaskUpdate, 
+  onTaskDelete
+}: TaskListProps) {
+  
+  const [tasks, setTasks] = useState<TaskDTO[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
+  const [showNewTaskForm, setShowNewTaskForm] = useState(false)
+
+  // Load tasks for the project
+  useEffect(() => {
+    loadTasks()
+  }, [projectId])
+
+  const loadTasks = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const projectTasks = await fetchTasksForProject(projectId)
+      setTasks(projectTasks)
+    } catch (err) {
+      console.error('Error loading tasks:', err)
+      setError('Failed to load tasks')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleTaskUpdate = async (taskId: string, updates: Partial<TaskDTO>) => {
+    try {
+      await onTaskUpdate(taskId, updates)
+      await loadTasks() // Reload to get fresh data
+    } catch (error) {
+      console.error('Error updating task:', error)
+    }
+  }
+
+  const handleTaskDelete = async (taskId: string) => {
+    try {
+      await onTaskDelete(taskId)
+      await loadTasks() // Reload to get fresh data
+    } catch (error) {
+      console.error('Error deleting task:', error)
+    }
+  }
+
+  const handleTaskComplete = async (taskId: string, completed: boolean) => {
+    await handleTaskUpdate(taskId, { 
+      completed,
+      completedDate: completed ? new Date().toISOString() : undefined
+    })
+  }
+
+  const handleTaskCreate = async (taskData: Omit<TaskDTO, 'id' | 'lastModified' | 'syncState'>) => {
+    try {
+      const newTask = await createTask(projectId, taskData)
+      setTasks(prev => [...prev, newTask])
+      setShowNewTaskForm(false)
+      console.log('Task created successfully:', newTask)
+    } catch (error) {
+      console.error('Error creating task:', error)
+      setError('Failed to create task')
+    }
+  }
+
+  // Sort tasks: next → available → blocked → completed
+  const sortedTasks = [...tasks].sort((a, b) => {
+    // Priority order: next > available > blocked > completed
+    const getPriority = (task: TaskDTO) => {
+      if (task.completed) return 4
+      if (task.status === 'blocked') return 3
+      if (task.status === 'available' && !task.flagged) return 2
+      if (task.status === 'next' || task.flagged) return 1
+      return 5
+    }
+    return getPriority(a) - getPriority(b)
+  })
+
+  if (loading) {
+    return (
+      <div className="task-flow">
+        <div className="task-loading">Loading tasks...</div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="task-flow">
+        <div className="task-error">{error}</div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="task-flow">
+      {/* Add Task Button/Form */}
+      <div className="task-list-header">
+        {!showNewTaskForm ? (
+          <button 
+            className="add-task-btn"
+            onClick={() => setShowNewTaskForm(true)}
+          >
+            + Add Task
+          </button>
+        ) : (
+          <NewTaskForm
+            projectId={projectId}
+            onSave={handleTaskCreate}
+            onCancel={() => setShowNewTaskForm(false)}
+          />
+        )}
+      </div>
+
+      {/* Task List - Show only 3 most recent */}
+      {tasks.length === 0 && !showNewTaskForm ? (
+        <div className="task-empty">No tasks yet. Click "+ Add Task" to create one.</div>
+      ) : (
+        <>
+          {/* Simplified flat list - show top 3 tasks only */}
+          {sortedTasks.slice(0, 3).map(task => (
+            <TaskItem
+              key={task.id}
+              task={task}
+              onUpdate={(updates) => handleTaskUpdate(task.id, updates)}
+              onDelete={() => handleTaskDelete(task.id)}
+              onComplete={(completed) => handleTaskComplete(task.id, completed)}
+              isEditing={editingTaskId === task.id}
+              onEditToggle={() => setEditingTaskId(editingTaskId === task.id ? null : task.id)}
+            />
+          ))}
+          {sortedTasks.length > 3 && (
+            <div className="task-more-indicator">
+              + {sortedTasks.length - 3} more {sortedTasks.length - 3 === 1 ? 'task' : 'tasks'}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
