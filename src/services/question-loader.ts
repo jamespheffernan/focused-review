@@ -126,14 +126,13 @@ export async function loadReviewQuestions(): Promise<QuestionSet> {
   }
   
   try {
-    // Try to load from file system (Electron)
-    if (window.electronAPI) {
-      const response = await fetch('../review-questions.md')
-      const markdown = await response.text()
-      cachedQuestions = parseQuestionsFromMarkdown(markdown)
-      console.log('✅ Loaded questions from markdown file')
-      return cachedQuestions
-    }
+    // Try to load from file system (Electron and web builds)
+    // File should be in public/ directory, which gets copied to build root
+    const response = await fetch('/review-questions.md')
+    const markdown = await response.text()
+    cachedQuestions = parseQuestionsFromMarkdown(markdown)
+    console.log('✅ Loaded questions from markdown file')
+    return cachedQuestions
   } catch (error) {
     console.warn('⚠️ Failed to load questions from markdown, using fallback:', error)
   }
