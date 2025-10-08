@@ -3,12 +3,34 @@ import { db } from '../db'
 import type { NotionSyncQueueItem } from '../types'
 
 /**
- * Add a sync item to the queue
+ * Check if a sync item already exists for this project+week
+ */
+export async function queueItemExists(
+  projectId: string,
+  weekOf: string
+): Promise<boolean> {
+  const existing = await db.notionSyncQueue
+    .where('[projectId+weekOf]')
+    .equals([projectId, weekOf])
+    .first()
+  
+  return !!existing
+}
+
+/**
+ * Add a sync item to the queue (only if it doesn't already exist)
  */
 export async function addToQueue(
   projectId: string,
   weekOf: string
-): Promise<NotionSyncQueueItem> {
+): Promise<NotionSyncQueueItem | null> {
+  // Check if item already exists
+  const exists = await queueItemExists(projectId, weekOf)
+  if (exists) {
+    console.log(`⏭️  Skipping duplicate: ${projectId}, week ${weekOf} already in queue`)
+    return null
+  }
+  
   const item: NotionSyncQueueItem = {
     id: crypto.randomUUID(),
     projectId,
