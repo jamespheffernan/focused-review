@@ -1,0 +1,475 @@
+import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useApp } from '../store'
+import type { AnswerDraft, TaskDTO } from '../types'
+import { createTimer } from '../services/timer'
+import { latest } from '../repos/answersRepo'
+import { fetchTasksForProject, updateTask, deleteTask } from '../repos/tasksRepo'
+import TimerCircle from '../components/TimerCircle'
+import KeyboardShortcuts from '../components/KeyboardShortcuts'
+import TaskList from '../components/TaskList'
+import { extractNotionLink, getNotionLinkError, hasNotionLink } from '../utils/notionLink'
+
+export default function FocusScreen({ projectIndex }: { projectIndex: number }) {
+  const { queue, currentProjectQuestions, setDraft, markReviewedAndNext, skipAndNext, loadProjectQuestions } = useApp()
+  const project = queue[projectIndex]
+  const [idx, setIdx] = useState(0)
+  const [remaining, setRemaining] = useState(30)
+  const timer = useMemo(() => createTimer(setRemaining), [])
+  const [answeredQuestions, setAnsweredQuestions] = useState<Array<{id: string, prompt: string, answer: string, status: 'answered' | 'skipped'}>>([])
+  const [currentAnswer, setCurrentAnswer] = useState('')
+  const [lastWeekAnswer, setLastWeekAnswer] = useState('')
+  const [showTasks, setShowTasks] = useState(false)
+  const [projectTasks, setProjectTasks] = useState<TaskDTO[]>([])
+  const [tasksLoading, setTasksLoading] = useState(false)
+  const [selectedMood, setSelectedMood] = useState<number | null>(null)
+
+  const q = currentProjectQuestions[idx]
+
+  // Safety check for undefined project
+  if (!project) {
+    return <div className="focus-screen">Loading project...</div>
+  }
+
+  // Show loading state if no questions are loaded yet
+  if (currentProjectQuestions.length === 0) {
+    return <div className="focus-screen">Loading questions...</div>
+  }
+
+  // Safety check for undefined question
+  if (!q) {
+    return <div className="focus-screen">Loading questions...</div>
+  }
+
+  // Load tasks for the current project
+  const loadProjectTasks = useCallback(async () => {
+    try {
+      setTasksLoading(true)
+      const tasks = await fetchTasksForProject(project.id)
+      console.log(`Loaded ${tasks.length} tasks for project ${project.name}:`, tasks)
+      setProjectTasks(tasks)
+      
+      // Log if no tasks found
+      if (tasks.length === 0) {
+        console.log('No tasks found for project:', project.name)
+      }
+    } catch (error) {
+      console.error('Error loading project tasks:', error)
+    } finally {
+      setTasksLoading(false)
+    }
+  }, [project.id, project.name])
+
+  // Reset question index and answered questions when project changes
+  useEffect(() => {
+    setIdx(0)
+    setAnsweredQuestions([])
+    setCurrentAnswer('')
+    setLastWeekAnswer('')
+    setShowTasks(false)
+    // Load context-aware questions for the current project
+    loadProjectQuestions(project)
+    // Auto-load tasks for the current project
+    loadProjectTasks()
+  }, [project.id, projectIndex, loadProjectQuestions, loadProjectTasks])
+
+  // Handle task updates
+  const handleTaskUpdate = async (taskId: string, updates: Partial<TaskDTO>) => {
+    try {
+      await updateTask(taskId, updates)
+      await loadProjectTasks() // Reload tasks to get fresh data
+    } catch (error) {
+      console.error('Error updating task:', error)
+    }
+  }
+
+  // Handle task deletion
+  const handleTaskDelete = async (taskId: string) => {
+    try {
+      await deleteTask(taskId)
+      await loadProjectTasks() // Reload tasks to get fresh data
+    } catch (error) {
+      console.error('Error deleting task:', error)
+    }
+  }
+
+  useEffect(() => { 
+    timer.start(30)
+    // Load current answer and last week's answer
+    loadAnswers()
+  }, [idx, project.id, q.id])
+
+  // Force re-render when remaining time changes
+  useEffect(() => {
+    // This will trigger a re-render when remaining changes
+  }, [remaining])
+
+  // Enhanced keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only handle shortcuts when not typing in input fields
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return
+      }
+
+      // Handle number keys 1-5 for engagement slider (question 5)
+      if (q.id === 'q-engage' && ['1', '2', '3', '4', '5'].includes(e.key)) {
+        e.preventDefault()
+        const engagementValue = parseInt(e.key)
+        handleEngagementChange(engagementValue)
+        
+        // Auto-advance after setting engagement
+        moveToNextQuestion()
+        return
+      }
+
+      switch (e.key) {
+        case 'ArrowLeft':
+          e.preventDefault()
+          setIdx(Math.max(0, idx - 1))
+          break
+        case 'ArrowRight':
+          e.preventDefault()
+          setIdx(Math.min(currentProjectQuestions.length - 1, idx + 1))
+          break
+        case 's':
+          if (e.metaKey || e.ctrlKey) {
+            e.preventDefault()
+            // Save current answer (already handled by autosave)
+            console.log('Answer saved')
+          }
+          break
+        case 'n':
+          // Ctrl+N (Windows/Linux) or Cmd+N (Mac) to open Notion link
+          if (e.metaKey || e.ctrlKey) {
+            e.preventDefault()
+            openNotionLink()
+          }
+          break
+        case 'Escape':
+          e.preventDefault()
+          // Skip current project
+          skipAndNext(projectIndex)
+          break
+        case ' ':
+          e.preventDefault()
+          // Mark reviewed and next
+          markReviewedAndNext(project, projectIndex)
+          break
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [idx, currentProjectQuestions.length, project, projectIndex, skipAndNext, markReviewedAndNext, q.id, handleEngagementChange])
+
+  const loadAnswers = async () => {
+    const prev = await latest(project.id, q.id)
+    setLastWeekAnswer(prev?.text ?? '')
+    setCurrentAnswer(prev?.text ?? '')
+  }
+
+  const startOfISOWeek = () => {
+    const d = new Date(); const day = d.getDay() || 7; d.setHours(0,0,0,0); d.setDate(d.getDate() - day + 1); return d.toISOString().slice(0,10)
+  }
+
+  async function handleTextChange(text: string) {
+    setCurrentAnswer(text)
+    const prev = await latest(project.id, q.id)
+    const draft: AnswerDraft = {
+      id: crypto.randomUUID(),
+      projectID: project.id, questionID: q.id,
+      text, weekOf: startOfISOWeek(),
+      status: (!prev || prev.text === text) ? 'CarriedForward' : 'Updated'
+    }
+    await setDraft(draft)
+    
+    // Update answered questions list
+    const existingIndex = answeredQuestions.findIndex(aq => aq.id === q.id)
+    if (existingIndex >= 0) {
+      // Update existing answer
+      const updated = [...answeredQuestions]
+      updated[existingIndex] = { id: q.id, prompt: q.prompt, answer: text, status: 'answered' }
+      setAnsweredQuestions(updated)
+    } else {
+      // Add new answer
+      setAnsweredQuestions([...answeredQuestions, { id: q.id, prompt: q.prompt, answer: text, status: 'answered' }])
+    }
+  }
+
+
+  async function handleEngagementChange(score?: number) {
+    const draft: AnswerDraft = {
+      id: crypto.randomUUID(),
+      projectID: project.id, questionID: q.id,
+      engagementScore: score, weekOf: startOfISOWeek(), status: 'Updated'
+    }
+    await setDraft(draft)
+    
+    // Update answered questions list for engagement slider
+    const existingIndex = answeredQuestions.findIndex(aq => aq.id === q.id)
+    if (existingIndex >= 0) {
+      // Update existing answer
+      const updated = [...answeredQuestions]
+      updated[existingIndex] = { id: q.id, prompt: q.prompt, answer: `Engagement: ${score}/5`, status: 'answered' }
+      setAnsweredQuestions(updated)
+    } else {
+      // Add new answer
+      setAnsweredQuestions([...answeredQuestions, { id: q.id, prompt: q.prompt, answer: `Engagement: ${score}/5`, status: 'answered' }])
+    }
+  }
+
+  // Function to mark a question as skipped
+  function markQuestionAsSkipped(questionId: string) {
+    const question = currentProjectQuestions.find(q => q.id === questionId)
+    if (!question) return
+
+    const existingIndex = answeredQuestions.findIndex(aq => aq.id === questionId)
+    if (existingIndex >= 0) {
+      // Update existing entry to skipped
+      const updated = [...answeredQuestions]
+      updated[existingIndex] = { id: questionId, prompt: question.prompt, answer: 'Skipped', status: 'skipped' }
+      setAnsweredQuestions(updated)
+    } else {
+      // Add new skipped entry
+      setAnsweredQuestions([...answeredQuestions, { id: questionId, prompt: question.prompt, answer: 'Skipped', status: 'skipped' }])
+    }
+  }
+
+  // Function to move to next question (and mark current as skipped if not answered)
+  function moveToNextQuestion() {
+    const nextIdx = idx + 1
+    if (nextIdx >= currentProjectQuestions.length) {
+      // Last question - complete the review
+      markReviewedAndNext(project, projectIndex)
+    } else {
+      // Mark current question as skipped if not answered
+      const hasAnswer = answeredQuestions.some(aq => aq.id === q.id && aq.status === 'answered')
+      if (!hasAnswer) {
+        markQuestionAsSkipped(q.id)
+      }
+      setIdx(nextIdx)
+    }
+  }
+
+  // Function to open Notion deep link for current project
+  async function openNotionLink() {
+    try {
+      // Extract Notion link from project notes
+      const notionUrl = extractNotionLink(project.notes)
+      
+      if (!notionUrl) {
+        // No valid Notion link found - show error
+        const errorMessage = getNotionLinkError(project.notes)
+        alert(errorMessage)
+        return
+      }
+
+      // Check if Electron API is available
+      if (!window.electronAPI?.shell) {
+        alert('Cannot open Notion link: Electron API not available. This feature requires the desktop app.')
+        return
+      }
+
+      // Open the URL using Electron shell
+      const result = await window.electronAPI.shell.openExternal(notionUrl)
+      
+      if (!result.success) {
+        alert(`Failed to open Notion link: ${result.error || 'Unknown error'}`)
+      } else {
+        console.log(`Opened Notion link: ${notionUrl}`)
+      }
+    } catch (error) {
+      console.error('Error opening Notion link:', error)
+      alert(`Error opening Notion link: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  return (
+    <div className={`focus ${showTasks ? 'has-tasks-open' : ''}`}>
+      {/* Left Column: Question Log */}
+      <div className="focus-left-column">
+        <div className="answered-questions">
+          {answeredQuestions.length > 0 && (
+            <>
+              <h3>Question Log</h3>
+              {answeredQuestions.map(aq => (
+                <div 
+                  key={aq.id}
+                  className={`answered-question-item ${aq.id === q.id ? 'active' : ''} ${aq.status === 'skipped' ? 'skipped' : 'answered'}`}
+                  onClick={() => setIdx(currentProjectQuestions.findIndex(x => x.id === aq.id))}
+                >
+                  <div className="question">{aq.prompt}</div>
+                  <div className="answer">{aq.answer}</div>
+                  <div className="question-status">{aq.status === 'skipped' ? '⏭️ Skipped' : '✅ Answered'}</div>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Center Column: Main content area */}
+      <div className="focus-center-column">
+        <div className="focus-header-right">
+          <div className="project-info">
+            <div className="project-name">
+              Project: {project.name}
+              {hasNotionLink(project.notes) && (
+                <span 
+                  className="notion-indicator"
+                  onClick={openNotionLink}
+                  title={`Open in Notion (${window.electronAPI?.platform.isMacOS ? 'Cmd' : 'Ctrl'}+N)`}
+                >
+                  📝
+                </span>
+              )}
+            </div>
+            <div className="timer-container">
+              <TimerCircle remaining={remaining} total={30} />
+            </div>
+            {projectTasks.length > 0 && (
+              <div className="task-indicator" onClick={() => setShowTasks(true)}>
+                <span className="task-count">{projectTasks.filter(t => !t.completed).length}</span>
+                <span className="task-label">tasks</span>
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="focus-main">
+        <h1 className="main-question">{q.prompt}</h1>
+        
+        {/* Task Context Summary */}
+        {projectTasks.length > 0 && !showTasks && (
+          <div className="task-context-panel" onClick={() => setShowTasks(true)}>
+            <div className="task-summary">
+              <span className="task-count-badge">{projectTasks.length} tasks</span>
+              {projectTasks.filter(t => !t.completed).length > 0 && (
+                <span className="next-action-preview">
+                  Next: {projectTasks.filter(t => !t.completed)[0]?.name}
+                </span>
+              )}
+            </div>
+            <span className="task-details-toggle">View Tasks →</span>
+          </div>
+        )}
+
+        
+        {lastWeekAnswer && (
+          <div className="last-week-section">
+            <div className="last-week-label">LAST WEEK</div>
+            <div className="last-week-answer">{lastWeekAnswer}</div>
+            <div className="last-week-edit-hint">(CLICK OR ENTER TO EDIT)</div>
+          </div>
+        )}
+
+        {q.type === 'text' ? (
+          <>
+            <textarea
+              className="answer-input"
+              value={currentAnswer}
+              onChange={(e) => handleTextChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  // Move to next question or complete review if last question
+                  moveToNextQuestion()
+                }
+              }}
+              placeholder="Type your answer here... (Press Enter to go to next question)"
+            />
+          </>
+        ) : (
+          <div className="mood-selector">
+            <div className="mood-prompt">How do you feel about this project?</div>
+            <div className="mood-options">
+              <button
+                className={`mood-button ${selectedMood === 1 ? 'selected' : ''}`}
+                onClick={() => {
+                  setSelectedMood(1)
+                  handleEngagementChange(1)
+                }}
+                title="Not feeling it"
+              >
+                😔
+                <span className="mood-label">Low</span>
+              </button>
+              <button
+                className={`mood-button ${selectedMood === 2 ? 'selected' : ''}`}
+                onClick={() => {
+                  setSelectedMood(2)
+                  handleEngagementChange(2)
+                }}
+                title="Neutral"
+              >
+                😐
+                <span className="mood-label">Neutral</span>
+              </button>
+              <button
+                className={`mood-button ${selectedMood === 3 ? 'selected' : ''}`}
+                onClick={() => {
+                  setSelectedMood(3)
+                  handleEngagementChange(3)
+                }}
+                title="Feeling good"
+              >
+                😊
+                <span className="mood-label">High</span>
+              </button>
+            </div>
+          </div>
+        )}
+        </div>
+
+        {/* Footer with action buttons */}
+        <div className="focus-footer">
+          <button 
+            className="action-button skip"
+            onClick={() => skipAndNext(projectIndex)}
+          >
+            Skip
+          </button>
+          <button 
+            className="action-button mark-reviewed"
+            onClick={() => markReviewedAndNext(project, projectIndex)}
+          >
+            Mark Reviewed
+          </button>
+        </div>
+        
+        <KeyboardShortcuts />
+      </div>
+
+      {/* Right Column: Task Panel */}
+      {showTasks && (
+        <div className="task-panel-sidebar open">
+          <div className="task-panel-header">
+            <h3>Tasks</h3>
+            <button className="close-panel" onClick={() => setShowTasks(false)}>×</button>
+          </div>
+          
+          <div className="task-panel-content">
+            {projectTasks.length === 0 && !tasksLoading ? (
+              <div className="no-tasks-message">
+                <p>No tasks found for this project.</p>
+                <button 
+                  className="refresh-tasks-btn"
+                  onClick={loadProjectTasks}
+                >
+                  🔄 Refresh Tasks
+                </button>
+              </div>
+            ) : (
+              <TaskList
+                projectId={project.id}
+                onTaskUpdate={handleTaskUpdate}
+                onTaskDelete={handleTaskDelete}
+                showFilter={false}
+                showStatistics={false}
+              />
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

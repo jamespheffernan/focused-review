@@ -1,0 +1,43 @@
+export type ProjectStatus = 'active'|'on_hold'|'dropped'
+export type QuestionType = 'text'|'slider'
+export type AnswerStatus = 'CarriedForward'|'Updated'|'New'
+export type SyncState = 'synced'|'queued'|'retrying'|'error'
+export type TaskStatus = 'available'|'next'|'blocked'|'completed'
+
+export interface ProjectDTO {
+  id: string; name: string; status: ProjectStatus
+  deferDate?: string; dueDate?: string; reviewIntervalDays: number
+  tags: string[]; lastReviewed?: string
+  notes?: string  // Project notes - first line may contain Notion deep link
+}
+
+export interface TaskDTO {
+  id: string
+  projectId: string
+  name: string
+  status: TaskStatus
+  dueDate?: string
+  deferDate?: string
+  context?: string
+  flagged: boolean
+  note?: string
+  completed: boolean
+  completedDate?: string
+  lastModified: string
+  syncState: SyncState
+}
+
+export interface QuestionDTO { id: string; prompt: string; type: QuestionType; order: number }
+
+export interface AnswerDraft {
+  id: string; projectID: string; questionID: string
+  text?: string; engagementScore?: number
+  weekOf: string; status: AnswerStatus
+}
+
+export interface SessionDTO {
+  id: string; startedAt: string; endedAt?: string
+  projectsReviewed: number; projectsSkipped: number; avgTimePerProjectSec: number
+}
+
+export interface SummaryStats { reviewed: number; skipped: number; totalTimeSec: number; avgTimePerProjectSec: number }
