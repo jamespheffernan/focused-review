@@ -4,6 +4,7 @@ import type { AnswerDraft, TaskDTO } from '../types'
 import { createTimer } from '../services/timer'
 import { latest } from '../repos/answersRepo'
 import { fetchTasksForProject, updateTask, deleteTask } from '../repos/tasksRepo'
+import { db } from '../db'
 import TimerCircle from '../components/TimerCircle'
 import KeyboardShortcuts from '../components/KeyboardShortcuts'
 import TaskList from '../components/TaskList'
@@ -173,10 +174,19 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
   async function handleTextChange(text: string) {
     setCurrentAnswer(text)
     const prev = await latest(project.id, q.id)
+    
+    // Get existing answer for this week to reuse its ID (avoid creating duplicates)
+    const currentWeek = startOfISOWeek()
+    const existingThisWeek = await db.answers
+      .where('[projectID+questionID]')
+      .equals([project.id, q.id])
+      .filter(a => a.weekOf === currentWeek)
+      .first()
+    
     const draft: AnswerDraft = {
-      id: crypto.randomUUID(),
+      id: existingThisWeek?.id || crypto.randomUUID(), // Reuse ID if exists
       projectID: project.id, questionID: q.id,
-      text, weekOf: startOfISOWeek(),
+      text, weekOf: currentWeek,
       status: (!prev || prev.text === text) ? 'CarriedForward' : 'Updated'
     }
     await setDraft(draft)
@@ -196,10 +206,18 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
 
 
   async function handleEngagementChange(score?: number) {
+    // Get existing answer for this week to reuse its ID (avoid creating duplicates)
+    const currentWeek = startOfISOWeek()
+    const existingThisWeek = await db.answers
+      .where('[projectID+questionID]')
+      .equals([project.id, q.id])
+      .filter(a => a.weekOf === currentWeek)
+      .first()
+    
     const draft: AnswerDraft = {
-      id: crypto.randomUUID(),
+      id: existingThisWeek?.id || crypto.randomUUID(), // Reuse ID if exists
       projectID: project.id, questionID: q.id,
-      engagementScore: score, weekOf: startOfISOWeek(), status: 'Updated'
+      engagementScore: score, weekOf: currentWeek, status: 'Updated'
     }
     await setDraft(draft)
     

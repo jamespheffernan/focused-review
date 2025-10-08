@@ -287,6 +287,16 @@ async function startQueueProcessor() {
     console.error('❌ Error removing duplicates:', error)
   }
   
+  // Clean up any duplicate answers on startup
+  try {
+    const removed = await Answers.removeDuplicateAnswers()
+    if (removed > 0) {
+      console.log(`🧹 Cleaned up ${removed} duplicate answers on startup`)
+    }
+  } catch (error) {
+    console.error('❌ Error removing duplicate answers:', error)
+  }
+  
   async function processRetries() {
     try {
       const stats = await NotionSyncQueue.getQueueStats()
