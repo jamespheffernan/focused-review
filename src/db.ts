@@ -48,7 +48,7 @@ export class ReviewDB extends Dexie {
       answers: 'id, projectID, questionID, weekOf, [projectID+questionID], [projectID+weekOf]',
       sessions: 'id, startedAt',
       tasks: 'id, projectId, status, completed, [projectId+status], [projectId+completed], dueDate, flagged, lastModified, syncState',
-      notionSyncQueue: 'id, projectId, weekOf, status, nextRetry'
+      notionSyncQueue: 'id, projectId, weekOf, status, nextRetry, [projectId+weekOf]'
     })
   }
 }
