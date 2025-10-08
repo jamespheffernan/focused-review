@@ -151,6 +151,46 @@ export async function clearFailed(): Promise<number> {
 }
 
 /**
+ * Remove duplicate queue items, keeping only the oldest one per project+week
+ */
+export async function removeDuplicates(): Promise<number> {
+  const allItems = await db.notionSyncQueue.toArray()
+  
+  // Group by project+week
+  const groups = new Map<string, NotionSyncQueueItem[]>()
+  
+  for (const item of allItems) {
+    const key = `${item.projectId}:${item.weekOf}`
+    if (!groups.has(key)) {
+      groups.set(key, [])
+    }
+    groups.get(key)!.push(item)
+  }
+  
+  // For each group, keep oldest, delete rest
+  let removedCount = 0
+  
+  for (const [key, items] of groups) {
+    if (items.length > 1) {
+      // Sort by createdAt, keep first (oldest)
+      items.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      const toKeep = items[0]
+      const toRemove = items.slice(1)
+      
+      for (const item of toRemove) {
+        await db.notionSyncQueue.delete(item.id)
+        removedCount++
+      }
+      
+      console.log(`🧹 Removed ${toRemove.length} duplicates for ${key}, kept ${toKeep.id}`)
+    }
+  }
+  
+  console.log(`🧹 Total duplicates removed: ${removedCount}`)
+  return removedCount
+}
+
+/**
  * Process the sync queue (called periodically)
  * Returns number of items successfully processed
  */

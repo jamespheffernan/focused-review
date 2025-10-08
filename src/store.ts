@@ -274,8 +274,18 @@ export const useApp = create<State>((set, get) => ({
  * Background process to retry failed Notion syncs
  * Runs every 5 minutes
  */
-function startQueueProcessor() {
+async function startQueueProcessor() {
   const INTERVAL_MS = 5 * 60 * 1000 // 5 minutes
+  
+  // Clean up any duplicate queue items on startup
+  try {
+    const removed = await NotionSyncQueue.removeDuplicates()
+    if (removed > 0) {
+      console.log(`🧹 Cleaned up ${removed} duplicate queue items on startup`)
+    }
+  } catch (error) {
+    console.error('❌ Error removing duplicates:', error)
+  }
   
   async function processRetries() {
     try {
