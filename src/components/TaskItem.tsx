@@ -33,7 +33,19 @@ export default function TaskItem({
     )
   }
 
-  // Simplified view: checkbox + task name only
+  // Format date helper
+  const formatDate = (dateStr: string | undefined) => {
+    if (!dateStr) return null
+    const date = new Date(dateStr)
+    const now = new Date()
+    const isOverdue = date < now
+    const formatted = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    return { formatted, isOverdue }
+  }
+
+  const dueInfo = formatDate(task.dueDate)
+
+  // Simplified view: checkbox + task name + metadata
   return (
     <div className={`task-card ${task.completed ? 'completed' : ''} ${task.flagged ? 'flagged' : ''}`}>
       <div className="task-main">
@@ -54,6 +66,18 @@ export default function TaskItem({
           onClick={onEditToggle}
         >
           <div className="task-name">{task.name}</div>
+          {(task.context || task.dueDate) && (
+            <div className="task-meta">
+              {task.context && (
+                <span className="context-tag">🏷️ {task.context}</span>
+              )}
+              {dueInfo && (
+                <span className={`due-date ${dueInfo.isOverdue ? 'overdue' : ''}`}>
+                  📅 {dueInfo.formatted}
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

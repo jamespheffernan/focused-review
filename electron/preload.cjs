@@ -31,6 +31,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     openExternal: (url) => ipcRenderer.invoke('open-external-url', url)
   },
   
+  // Notion sync operations
+  notion: {
+    syncReview: (projectId, weekOf) => ipcRenderer.invoke('notion:sync-review', projectId, weekOf),
+    isConfigured: () => ipcRenderer.invoke('notion:is-configured')
+  },
+  
   // Platform info
   platform: {
     isElectron: true,

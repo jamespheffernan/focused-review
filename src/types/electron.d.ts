@@ -26,6 +26,22 @@ export interface ElectronAPI {
     openExternal: (url: string) => Promise<{ success: boolean; url?: string; error?: string }>
   }
   
+  notion: {
+    syncReview: (projectId: string, weekOf?: string) => Promise<{ 
+      success: boolean
+      skipped?: boolean
+      reason?: string
+      message?: string
+      error?: string
+    }>
+    isConfigured: () => Promise<{ 
+      configured: boolean
+      hasToken?: boolean
+      hasDatabase?: boolean
+      error?: string
+    }>
+  }
+  
   platform: {
     isElectron: boolean
     isMacOS: boolean

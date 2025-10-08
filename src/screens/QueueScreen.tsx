@@ -268,7 +268,7 @@ export default function QueueScreen() {
           })}
         </ul>
         
-        <div className="actions">
+        <div className="actions sticky-actions">
           <button 
             className="primary" 
             onClick={() => start(ids.length ? ids : queue.map(p=>p.id))}

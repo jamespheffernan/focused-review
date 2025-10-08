@@ -41,3 +41,15 @@ export interface SessionDTO {
 }
 
 export interface SummaryStats { reviewed: number; skipped: number; totalTimeSec: number; avgTimePerProjectSec: number }
+
+export interface NotionSyncQueueItem {
+  id: string                    // UUID for queue item
+  projectId: string            // OmniFocus project ID
+  weekOf: string               // ISO date for week (e.g., "2025-10-01")
+  createdAt: string            // When item was added to queue
+  attempts: number             // Number of sync attempts
+  lastAttempt?: string         // Timestamp of last attempt
+  nextRetry?: string           // Timestamp when to retry next
+  status: 'pending' | 'retrying' | 'failed' | 'completed'
+  errorMessage?: string        // Last error if failed
+}

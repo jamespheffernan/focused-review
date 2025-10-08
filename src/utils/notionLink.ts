@@ -50,6 +50,9 @@ export function extractNotionLink(notes?: string): string | null {
  * isValidNotionUrl("https://www.notion.so/workspace/Page-123")
  * // Returns: true
  * 
+ * isValidNotionUrl("notion://www.notion.so/workspace/Page-123")
+ * // Returns: true
+ * 
  * isValidNotionUrl("https://google.com")
  * // Returns: false
  */
@@ -61,7 +64,12 @@ export function isValidNotionUrl(url: string): boolean {
   try {
     const urlObj = new URL(url)
     
-    // Check if it's a Notion domain
+    // Check if it's a Notion protocol
+    if (urlObj.protocol === 'notion:') {
+      return true
+    }
+    
+    // Check if it's a Notion web domain
     const validDomains = [
       'www.notion.so',
       'notion.so'

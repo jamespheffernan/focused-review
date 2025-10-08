@@ -7,7 +7,26 @@ import './App.css'
 
 export default function App() {
   const { route, loadQueue } = useApp()
-  useEffect(() => { loadQueue() }, [])
+  
+  useEffect(() => { 
+    loadQueue()
+    
+    // Check Notion configuration on startup
+    if (window.electronAPI?.notion) {
+      window.electronAPI.notion.isConfigured().then(result => {
+        if (result.configured) {
+          console.log('✅ Notion sync is configured and enabled')
+        } else {
+          console.log('⚠️ Notion sync is NOT configured')
+          console.log('   To enable: Set NOTION_TOKEN and NOTION_PROJECT_DB environment variables')
+          console.log('   See: docs/omnifocus-notion-sync/README.md')
+        }
+      }).catch(error => {
+        console.error('❌ Error checking Notion configuration:', error)
+      })
+    }
+  }, [])
+  
   if (route.name === 'queue') return <QueueScreen />
   if (route.name === 'focus') return <FocusScreen projectIndex={route.idx} />
   return <SummaryScreen />

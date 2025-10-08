@@ -5,6 +5,8 @@ import * as Answers from './repos/answersRepo'
 import * as Sessions from './repos/sessionsRepo'
 import { fetchTasksForProject } from './repos/tasksRepo'
 import { getQuestionsForProject } from './services/question-loader'
+import { getStartOfISOWeek } from './services/review-formatter'
+import * as NotionSyncQueue from './repos/notionSyncQueueRepo'
 
 // Fallback questions if markdown file can't be loaded
 const FALLBACK_QUESTIONS: QuestionDTO[] = [
@@ -15,6 +17,41 @@ const FALLBACK_QUESTIONS: QuestionDTO[] = [
   { id:'q-align',    prompt:'Does this align with higher-level goals?', type:'text', order:5 },
   { id:'q-engage',   prompt:'Am I engaged and motivated?', type:'slider', order:6 }
 ]
+
+/**
+ * Trigger Notion sync for a project's weekly review
+ * Non-blocking - fires and forgets, errors are added to retry queue
+ */
+async function triggerNotionSync(projectId: string, weekOf: string): Promise<void> {
+  // Check if we're in Electron environment
+  if (!window.electronAPI?.notion) {
+    console.log('⏭️ Notion sync skipped: not in Electron environment')
+    return
+  }
+  
+  console.log(`🔄 Triggering Notion sync for project ${projectId}, week ${weekOf}`)
+  
+  try {
+    const result = await window.electronAPI.notion.syncReview(projectId, weekOf)
+    
+    if (result.success) {
+      console.log(`✅ Notion sync completed for project ${projectId}`)
+    } else if (result.skipped) {
+      console.log(`⏭️ Notion sync skipped: ${result.reason}`)
+      // Don't queue if skipped (e.g., not configured, no page found)
+    } else {
+      console.error(`❌ Notion sync failed: ${result.error}`)
+      // Add to queue for retry
+      await NotionSyncQueue.addToQueue(projectId, weekOf)
+      throw new Error(result.error || 'Unknown sync error')
+    }
+  } catch (error) {
+    console.error('❌ Notion sync error:', error)
+    // Ensure it's in the queue
+    await NotionSyncQueue.addToQueue(projectId, weekOf)
+    throw error
+  }
+}
 
 // Generate context-aware questions based on project tasks and review history
 const generateContextAwareQuestions = async (project: ProjectDTO): Promise<QuestionDTO[]> => {
@@ -86,6 +123,7 @@ type State = {
   questions: QuestionDTO[]
   currentProjectQuestions: QuestionDTO[]
   drafts: Record<string, AnswerDraft> // key = projectID|questionID
+  projectStartTime: number | null
   loadQueue: () => Promise<void>
   syncFromOmniFocus: () => Promise<void>
   start: (ids: string[]) => Promise<void>
@@ -102,6 +140,7 @@ export const useApp = create<State>((set, get) => ({
   questions: FALLBACK_QUESTIONS,
   currentProjectQuestions: FALLBACK_QUESTIONS,
   drafts: {},
+  projectStartTime: null,
 
   loadQueue: async () => {
     console.log('📦 [Store] loadQueue called')
@@ -128,7 +167,7 @@ export const useApp = create<State>((set, get) => ({
   start: async (ids) => {
     const queue = (await Projects.fetchDueForReview()).filter(p => ids.includes(p.id))
     const s = await Sessions.startSession(queue)
-    set({ queue, sessionID: s.id, route: { name:'focus', idx: 0 } })
+    set({ queue, sessionID: s.id, route: { name:'focus', idx: 0 }, projectStartTime: Date.now() })
     
     // Load context-aware questions for the first project
     if (queue.length > 0) {
@@ -149,14 +188,33 @@ export const useApp = create<State>((set, get) => ({
   },
 
   markReviewedAndNext: async (project, idx) => {
+    // Calculate time spent on this project
+    const timeSpentSec = get().projectStartTime 
+      ? Math.round((Date.now() - get().projectStartTime!) / 1000)
+      : 0
+    
+    // Mark project as reviewed in OmniFocus
     await Projects.markReviewed(project.id, new Date().toISOString())
+    
+    // Update session statistics
+    await Sessions.incrementProjectsReviewed(get().sessionID, timeSpentSec)
+    
+    // Trigger Notion sync asynchronously (non-blocking)
+    // If it fails, it will be queued for retry
+    const weekOf = getStartOfISOWeek()
+    triggerNotionSync(project.id, weekOf).catch(error => {
+      console.error('❌ Notion sync failed (queued for retry):', error)
+    })
+    
+    // Continue to next project without waiting for sync
     const next = idx + 1
     if (next < get().queue.length) {
       const nextProject = get().queue[next]
       const questions = await generateContextAwareQuestions(nextProject)
       set({ 
         route: { name:'focus', idx: next },
-        currentProjectQuestions: questions
+        currentProjectQuestions: questions,
+        projectStartTime: Date.now() // Reset timer for next project
       })
     } else {
       set({ route: { name:'summary' } })
@@ -164,13 +222,22 @@ export const useApp = create<State>((set, get) => ({
   },
 
   skipAndNext: async (idx) => {
+    // Calculate time spent on this project
+    const timeSpentSec = get().projectStartTime 
+      ? Math.round((Date.now() - get().projectStartTime!) / 1000)
+      : 0
+    
+    // Update session statistics
+    await Sessions.incrementProjectsSkipped(get().sessionID, timeSpentSec)
+    
     const next = idx + 1
     if (next < get().queue.length) {
       const nextProject = get().queue[next]
       const questions = await generateContextAwareQuestions(nextProject)
       set({ 
         route: { name:'focus', idx: next },
-        currentProjectQuestions: questions
+        currentProjectQuestions: questions,
+        projectStartTime: Date.now() // Reset timer for next project
       })
     } else {
       set({ route: { name:'summary' } })
@@ -179,3 +246,53 @@ export const useApp = create<State>((set, get) => ({
 
   gotoSummary: () => set({ route: { name:'summary' } })
 }))
+
+/**
+ * Background process to retry failed Notion syncs
+ * Runs every 5 minutes
+ */
+function startQueueProcessor() {
+  const INTERVAL_MS = 5 * 60 * 1000 // 5 minutes
+  
+  async function processRetries() {
+    try {
+      const stats = await NotionSyncQueue.getQueueStats()
+      const totalQueued = stats.pending + stats.retrying
+      
+      if (totalQueued === 0) {
+        return
+      }
+      
+      console.log(`🔄 Processing Notion sync queue: ${totalQueued} items (${stats.pending} pending, ${stats.retrying} retrying, ${stats.failed} failed)`)
+      
+      // Process queue using triggerNotionSync as the sync function
+      const syncFunction = async (projectId: string, weekOf: string) => {
+        try {
+          await triggerNotionSync(projectId, weekOf)
+          return true
+        } catch (error) {
+          // Error already logged and queued by triggerNotionSync
+          return false
+        }
+      }
+      
+      const result = await NotionSyncQueue.processQueue(syncFunction)
+      console.log(`✅ Queue processing complete: ${result.processed} succeeded, ${result.failed} failed`)
+    } catch (error) {
+      console.error('❌ Error processing Notion sync queue:', error)
+    }
+  }
+  
+  // Run immediately on startup
+  processRetries()
+  
+  // Then run periodically
+  setInterval(processRetries, INTERVAL_MS)
+  
+  console.log('🔄 Notion sync queue processor started (runs every 5 minutes)')
+}
+
+// Start queue processor when module loads
+if (typeof window !== 'undefined' && window.electronAPI?.notion) {
+  startQueueProcessor()
+}

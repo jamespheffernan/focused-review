@@ -6,6 +6,47 @@ const { promisify } = require('util')
 
 const execAsync = promisify(exec)
 
+// Load environment variables from shell config if not already set
+// This ensures Notion sync works even when app is launched from Finder
+async function loadEnvVarsFromShell() {
+  // Only load if not already set
+  if (process.env.NOTION_TOKEN && process.env.NOTION_PROJECT_DB) {
+    console.log('✅ Notion environment variables already set')
+    return
+  }
+  
+  try {
+    console.log('🔍 Attempting to load Notion environment variables from shell...')
+    
+    // Read env vars using shell (which sources .zshrc/.bashrc)
+    const { stdout } = await execAsync('source ~/.zshrc 2>/dev/null || source ~/.bashrc 2>/dev/null; echo "NOTION_TOKEN=$NOTION_TOKEN"; echo "NOTION_PROJECT_DB=$NOTION_PROJECT_DB"')
+    
+    const lines = stdout.trim().split('\n')
+    for (const line of lines) {
+      const [key, value] = line.split('=')
+      if (key && value && value !== 'undefined' && value !== '') {
+        process.env[key] = value
+        console.log(`✅ Loaded ${key} from shell config`)
+      }
+    }
+    
+    // Verify we got what we need
+    if (process.env.NOTION_TOKEN && process.env.NOTION_PROJECT_DB) {
+      console.log('✅ Notion sync environment variables loaded successfully')
+    } else {
+      console.log('⚠️ Notion environment variables not found in shell config')
+      console.log('   To enable Notion sync, set in ~/.zshrc or ~/.bashrc:')
+      console.log('   export NOTION_TOKEN="your_token"')
+      console.log('   export NOTION_PROJECT_DB="your_database_id"')
+    }
+  } catch (error) {
+    console.log('⚠️ Could not load env vars from shell (this is OK if launched from terminal)')
+  }
+}
+
+// Load env vars before app is ready
+loadEnvVarsFromShell()
+
 // Persistent JXA script path (app user data directory)
 const JXA_SCRIPT_PATH = path.join(app.getPath('userData'), 'omnifocus-sync.js')
 
@@ -1243,6 +1284,94 @@ ipcMain.handle('open-external-url', async (event, url) => {
     return {
       success: false,
       error: error.message || 'Failed to open URL'
+    }
+  }
+})
+
+// IPC handlers for Notion sync
+ipcMain.handle('notion:sync-review', async (event, projectId, weekOf) => {
+  try {
+    console.log(`🔄 Notion sync requested for project ${projectId}, week ${weekOf}`)
+    
+    // Check if Notion is configured
+    const notionToken = process.env.NOTION_TOKEN
+    const notionDb = process.env.NOTION_PROJECT_DB
+    
+    if (!notionToken || !notionDb) {
+      console.log('⏭️ Notion sync disabled: environment variables not set')
+      return {
+        success: false,
+        skipped: true,
+        reason: 'Notion not configured'
+      }
+    }
+    
+    // Import Notion client dynamically (only when needed)
+    const { Client } = require('@notionhq/client')
+    const notion = new Client({ auth: notionToken })
+    
+    // TODO: Implement actual sync logic
+    // For now, just verify we can connect to Notion
+    try {
+      // Test connection by querying the database
+      const response = await notion.databases.query({
+        database_id: notionDb,
+        filter: {
+          property: 'OF-ID',
+          rich_text: {
+            equals: projectId
+          }
+        },
+        page_size: 1
+      })
+      
+      if (response.results.length === 0) {
+        console.log(`⏭️ No Notion page found for project ${projectId}`)
+        return {
+          success: false,
+          skipped: true,
+          reason: 'No Notion page found for project'
+        }
+      }
+      
+      console.log(`✅ Notion sync handler called - found page for project ${projectId}`)
+      console.log('📝 Full sync implementation coming in next commit')
+      
+      return {
+        success: true,
+        message: 'Notion connection verified, full sync pending'
+      }
+    } catch (notionError) {
+      console.error('❌ Notion API error:', notionError)
+      return {
+        success: false,
+        error: notionError.message || 'Notion API error'
+      }
+    }
+  } catch (error) {
+    console.error('❌ Error in Notion sync handler:', error)
+    return {
+      success: false,
+      error: error.message || 'Unknown error'
+    }
+  }
+})
+
+ipcMain.handle('notion:is-configured', async () => {
+  try {
+    const notionToken = process.env.NOTION_TOKEN
+    const notionDb = process.env.NOTION_PROJECT_DB
+    
+    return {
+      configured: !!(notionToken && notionDb),
+      hasToken: !!notionToken,
+      hasDatabase: !!notionDb
+    }
+  } catch (error) {
+    console.error('Error checking Notion configuration:', error)
+    return {
+      configured: false,
+      error: error.message
     }
   }
 })

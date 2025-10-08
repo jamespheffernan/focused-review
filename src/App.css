@@ -194,6 +194,45 @@
   gap: 4px; /* Minimal gap for simple list */
 }
 
+/* Sync Error Banner */
+.sync-error-banner {
+  background: rgba(255, 68, 68, 0.2);
+  border: 1px solid rgba(255, 68, 68, 0.4);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sync-error-message {
+  color: #ff6b6b;
+  font-size: 0.9em;
+  font-weight: 500;
+  flex: 1;
+}
+
+.retry-sync-btn {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.85em;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: 'Electrolize', sans-serif;
+}
+
+.retry-sync-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.5);
+  transform: translateY(-1px);
+}
+
 /* Task List Header (for Add Task button) */
 .task-list-header {
   margin-bottom: 16px;
@@ -209,6 +248,7 @@
   border-radius: 8px;
   font-size: 0.95em;
   font-weight: 500;
+  font-family: 'Electrolize', sans-serif;
   cursor: pointer;
   transition: all 0.2s ease;
   width: 100%;
@@ -584,16 +624,25 @@
 }
 
 .task-meta {
-  display: none; /* Hidden in simplified view */
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 0.8em;
+  opacity: 0.8;
 }
 
 .context-tag,
 .due-date {
-  display: none; /* Hidden in simplified view */
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.85em;
 }
 
 .due-date.overdue {
-  display: none; /* Hidden in simplified view */
+  background: rgba(255, 68, 68, 0.2);
+  color: #ff6b6b;
+  font-weight: 500;
 }
 
 .task-actions {
@@ -704,6 +753,7 @@
   border-radius: 8px;
   font-size: 1em;
   font-weight: 600;
+  font-family: 'Electrolize', sans-serif;
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -755,6 +805,7 @@
   border-radius: 10px;
   font-size: 1em;
   font-weight: 600;
+  font-family: 'Electrolize', sans-serif;
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -1300,6 +1351,7 @@
   padding: 8px 12px;
   cursor: pointer;
   font-size: 0.9em;
+  font-family: 'Electrolize', sans-serif;
   transition: all 0.2s ease;
   margin-left: 15px;
 }
@@ -1380,6 +1432,7 @@
   border-radius: 6px;
   cursor: pointer;
   font-size: 0.9em;
+  font-family: 'Electrolize', sans-serif;
   margin-top: 15px;
   transition: background-color 0.2s ease;
 }
@@ -1421,4 +1474,93 @@
 .notion-indicator:hover {
   opacity: 1;
   transform: scale(1.1);
+}
+
+/* Responsive Styles for Small Laptops */
+@media (max-width: 1200px) {
+  .task-panel-sidebar {
+    padding: 20px;
+  }
+  
+  .task-card {
+    padding: 8px 10px;
+  }
+  
+  .task-name {
+    font-size: 0.95em;
+  }
+  
+  .task-meta {
+    font-size: 0.75em;
+  }
+  
+  .context-tag,
+  .due-date {
+    font-size: 0.8em;
+    padding: 2px 6px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .task-panel-sidebar {
+    padding: 16px;
+  }
+  
+  .task-panel-header {
+    padding: 16px 20px;
+  }
+  
+  .task-panel-header h3 {
+    font-size: 1.1em;
+  }
+  
+  .task-panel-content {
+    padding: 16px 20px;
+  }
+  
+  .task-card {
+    padding: 8px 10px;
+  }
+  
+  .task-name {
+    font-size: 0.9em;
+  }
+  
+  .task-complete-btn {
+    width: 18px;
+    height: 18px;
+    font-size: 0.7em;
+  }
+  
+  .add-task-btn {
+    padding: 10px 20px;
+    font-size: 0.9em;
+  }
+  
+  .task-editor-inline {
+    padding: 16px;
+  }
+  
+  .task-name-input,
+  .task-date-input,
+  .task-context-input {
+    padding: 8px 12px;
+    font-size: 0.95em;
+  }
+  
+  .save-btn,
+  .cancel-btn {
+    padding: 8px 16px;
+    font-size: 0.95em;
+  }
+  
+  .sync-error-banner {
+    padding: 10px 12px;
+    font-size: 0.85em;
+  }
+  
+  .retry-sync-btn {
+    padding: 5px 10px;
+    font-size: 0.8em;
+  }
 }

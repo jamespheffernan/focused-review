@@ -10,6 +10,7 @@ A focused, distraction-free desktop application for conducting weekly reviews of
 - **Task Management**: View, edit, and manage tasks during your review
 - **Offline-First**: All data stored locally using IndexedDB with explicit sync
 - **Session Tracking**: Track review sessions, time spent, and completion stats
+- **Notion Sync**: Automatically sync review answers to Notion pages with retry queue
 
 ### Notion Deep Link Integration (NEW ✨)
 Quickly access Notion documentation for your projects during reviews:
@@ -36,6 +37,80 @@ Quickly access Notion documentation for your projects during reviews:
    - `notion://www.notion.so/{workspace}/{page-id}` (Notion app deep link - recommended)
    - `https://www.notion.so/{workspace}/{page-id}` (Web browser link)
    - `https://notion.so/{workspace}/{page-id}` (Web browser link)
+
+### Notion Review Answers Sync (NEW ✨)
+Automatically sync your weekly review answers to Notion project pages:
+
+- **Automatic Sync**: Answers are synced to Notion when you mark a project reviewed
+- **Non-Blocking**: Never interrupts your review flow - syncs in background
+- **Retry Queue**: Failed syncs automatically retry with smart backoff (2, 4, 8, 16, 32 minutes)
+- **Compact Format**: Clean, readable markdown appended to your Notion pages
+- **Week-by-Week Log**: Build a permanent history of your project reflections
+
+#### How to Enable Notion Answers Sync
+
+**If you already use omnifocus-notion-sync**: ✅ **Nothing to do!** The app automatically reuses your existing configuration.
+
+**If you're setting up for the first time**:
+
+1. **Set Environment Variables** in your `~/.zshrc` or `~/.bashrc`:
+   ```bash
+   export NOTION_TOKEN="your_notion_integration_token"
+   export NOTION_PROJECT_DB="your_notion_database_id"
+   ```
+   
+   Then reload your shell: `source ~/.zshrc`
+
+2. **Get Your Notion Credentials**:
+   - **Notion Token**: Create an integration at https://www.notion.so/my-integrations
+   - **Database ID**: From your Active Projects database URL: 
+     `https://notion.so/workspace/{database-id}?v=...`
+
+3. **Launch the App** (from anywhere):
+   - The app automatically loads variables from your shell config
+   - Works when launched from Finder or Terminal
+   - Check console for: `✅ Notion sync is configured and enabled`
+
+#### How It Works
+
+When you mark a project reviewed:
+1. Your answers are formatted as markdown
+2. They're appended to the corresponding Notion page
+3. If sync fails (offline, network issue), it's queued automatically
+4. Background process retries every 5 minutes with exponential backoff
+5. After 5 failed attempts (~62 minutes), marked as permanently failed
+
+**Example Notion Output**:
+```markdown
+---
+
+**Week of October 8, 2025** *(Reviewed: Oct 8, 2025)*
+
+**Why am I doing this project?**: To improve weekly reflection quality
+
+**Where am I right now with it?**: Implementing Notion sync feature
+
+**Is this the clearly defined, physical Next Action?**: Complete documentation
+
+**What's the realistic timeline for this project?**: End of week
+
+**Does this align with higher-level goals?**: Yes, improves GTD workflow
+
+**Am I engaged and motivated?**: 😊 High (4/5)
+
+---
+```
+
+#### Troubleshooting Notion Sync
+
+- **"Notion sync is NOT configured"**: Set `NOTION_TOKEN` and `NOTION_PROJECT_DB` environment variables
+- **Sync fails silently**: Check console logs (DevTools) for error messages
+- **No Notion page found**: Ensure project exists in omnifocus-notion-sync database with correct OF-ID
+- **Duplicate entries**: The app checks for duplicates automatically, but manual duplication may occur if you re-review the same week
+
+See `docs/omnifocus-notion-sync/README.md` for detailed Notion setup instructions.
+
+---
 
 ### Smart Review Filtering
 The app automatically shows only projects that are **due or overdue** for review:

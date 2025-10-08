@@ -18,7 +18,6 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
   const [answeredQuestions, setAnsweredQuestions] = useState<Array<{id: string, prompt: string, answer: string, status: 'answered' | 'skipped'}>>([])
   const [currentAnswer, setCurrentAnswer] = useState('')
   const [lastWeekAnswer, setLastWeekAnswer] = useState('')
-  const [showTasks, setShowTasks] = useState(false)
   const [projectTasks, setProjectTasks] = useState<TaskDTO[]>([])
   const [tasksLoading, setTasksLoading] = useState(false)
   const [selectedMood, setSelectedMood] = useState<number | null>(null)
@@ -65,7 +64,6 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
     setAnsweredQuestions([])
     setCurrentAnswer('')
     setLastWeekAnswer('')
-    setShowTasks(false)
     // Load context-aware questions for the current project
     loadProjectQuestions(project)
     // Auto-load tasks for the current project
@@ -285,7 +283,7 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
   }
 
   return (
-    <div className={`focus ${showTasks ? 'has-tasks-open' : ''}`}>
+    <div className="focus">
       {/* Left Column: Question Log */}
       <div className="focus-left-column">
         <div className="answered-questions">
@@ -327,32 +325,10 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
             <div className="timer-container">
               <TimerCircle remaining={remaining} total={30} />
             </div>
-            {projectTasks.length > 0 && (
-              <div className="task-indicator" onClick={() => setShowTasks(true)}>
-                <span className="task-count">{projectTasks.filter(t => !t.completed).length}</span>
-                <span className="task-label">tasks</span>
-              </div>
-            )}
           </div>
         </div>
         <div className="focus-main">
         <h1 className="main-question">{q.prompt}</h1>
-        
-        {/* Task Context Summary */}
-        {projectTasks.length > 0 && !showTasks && (
-          <div className="task-context-panel" onClick={() => setShowTasks(true)}>
-            <div className="task-summary">
-              <span className="task-count-badge">{projectTasks.length} tasks</span>
-              {projectTasks.filter(t => !t.completed).length > 0 && (
-                <span className="next-action-preview">
-                  Next: {projectTasks.filter(t => !t.completed)[0]?.name}
-                </span>
-              )}
-            </div>
-            <span className="task-details-toggle">View Tasks →</span>
-          </div>
-        )}
-
         
         {lastWeekAnswer && (
           <div className="last-week-section">
@@ -439,37 +415,38 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
         <KeyboardShortcuts />
       </div>
 
-      {/* Right Column: Task Panel */}
-      {showTasks && (
-        <div className="task-panel-sidebar open">
-          <div className="task-panel-header">
-            <h3>Tasks</h3>
-            <button className="close-panel" onClick={() => setShowTasks(false)}>×</button>
-          </div>
-          
-          <div className="task-panel-content">
-            {projectTasks.length === 0 && !tasksLoading ? (
-              <div className="no-tasks-message">
-                <p>No tasks found for this project.</p>
-                <button 
-                  className="refresh-tasks-btn"
-                  onClick={loadProjectTasks}
-                >
-                  🔄 Refresh Tasks
-                </button>
-              </div>
-            ) : (
-              <TaskList
-                projectId={project.id}
-                onTaskUpdate={handleTaskUpdate}
-                onTaskDelete={handleTaskDelete}
-                showFilter={false}
-                showStatistics={false}
-              />
-            )}
-          </div>
+      {/* Right Column: Task Panel - Always Visible */}
+      <div className="task-panel-sidebar">
+        <div className="task-panel-header">
+          <h3>Tasks</h3>
         </div>
-      )}
+        
+        <div className="task-panel-content">
+          {tasksLoading ? (
+            <div className="no-tasks-message">
+              <p>Loading tasks...</p>
+            </div>
+          ) : projectTasks.length === 0 ? (
+            <div className="no-tasks-message">
+              <p>No tasks for this project.</p>
+              <button 
+                className="refresh-tasks-btn"
+                onClick={loadProjectTasks}
+              >
+                🔄 Refresh Tasks
+              </button>
+            </div>
+          ) : (
+            <TaskList
+              projectId={project.id}
+              onTaskUpdate={handleTaskUpdate}
+              onTaskDelete={handleTaskDelete}
+              showFilter={false}
+              showStatistics={false}
+            />
+          )}
+        </div>
+      </div>
     </div>
   )
 }

@@ -1,11 +1,12 @@
 import Dexie, { type Table } from 'dexie'
-import type { ProjectDTO, AnswerDraft, SessionDTO, TaskDTO } from './types'
+import type { ProjectDTO, AnswerDraft, SessionDTO, TaskDTO, NotionSyncQueueItem } from './types'
 
 export class ReviewDB extends Dexie {
   projects!: Table<ProjectDTO, string>
   answers!: Table<AnswerDraft, string>
   sessions!: Table<SessionDTO, string>
   tasks!: Table<TaskDTO, string>
+  notionSyncQueue!: Table<NotionSyncQueueItem, string>
   constructor() {
     super('reviewhud')
     this.version(1).stores({
@@ -40,6 +41,14 @@ export class ReviewDB extends Dexie {
       answers: 'id, projectID, questionID, weekOf, [projectID+questionID], [projectID+weekOf]',
       sessions: 'id, startedAt',
       tasks: 'id, projectId, status, completed, [projectId+status], [projectId+completed], dueDate, flagged, lastModified, syncState'
+    })
+    // Version 6: Add Notion sync queue for retry mechanism
+    this.version(6).stores({
+      projects: 'id, lastReviewed, status, nextReviewDate',
+      answers: 'id, projectID, questionID, weekOf, [projectID+questionID], [projectID+weekOf]',
+      sessions: 'id, startedAt',
+      tasks: 'id, projectId, status, completed, [projectId+status], [projectId+completed], dueDate, flagged, lastModified, syncState',
+      notionSyncQueue: 'id, projectId, weekOf, status, nextRetry'
     })
   }
 }
