@@ -88,7 +88,7 @@ export function formatReviewAsMarkdown(
   // Format week header
   const weekHeader = `**Week of ${formatWeekDate(weekOf)}** *(Reviewed: ${reviewedOn})*`
   
-  // Format each answer
+  // Sort answers by question order, then format each answer
   const formattedAnswers = answers
     .map(answer => {
       const question = questionMap.get(answer.questionID)
@@ -96,9 +96,11 @@ export function formatReviewAsMarkdown(
         console.warn(`Question not found for answer: ${answer.questionID}`)
         return null
       }
-      return formatAnswer(answer, question)
+      return { answer, question }
     })
-    .filter(Boolean) // Remove null entries
+    .filter((item): item is { answer: AnswerDraft; question: QuestionDTO } => item !== null)
+    .sort((a, b) => a.question.order - b.question.order) // Sort by question order
+    .map(({ answer, question }) => formatAnswer(answer, question))
   
   // Combine into final markdown
   const markdown = [
