@@ -1,17 +1,15 @@
 import { useMemo, useState, useEffect } from 'react'
 import { useApp } from '../store'
-import OmniFocusImporter from '../components/OmniFocusImporter'
-import { importOmniFocusProjectsWithTasks, getOmniFocusIntegrationStatus } from '../repos/projectsRepo'
+import { getOmniFocusIntegrationStatus } from '../repos/projectsRepo'
 import { getTaskStatisticsBatch } from '../repos/tasksRepo'
 import { syncManager } from '../services/syncManager'
-import type { ProjectDTO } from '../types'
-import { RefreshCw, FolderOpen, Info, AlertTriangle, ClipboardList, CheckCircle2, Ban } from 'lucide-react'
+import { RefreshCw, Info, AlertTriangle, ClipboardList, CheckCircle2, Ban } from 'lucide-react'
 import ThemeSelector from '../components/ThemeSelector'
 import { themeManager } from '../services/themeManager'
 import { DataSourceBanner } from '../components/DataSourceBanner'
 
 export default function QueueScreen() {
-  const { queue, start, loadQueue, syncFromOmniFocus } = useApp()
+  const { queue, start, syncFromOmniFocus } = useApp()
   const [sel, setSel] = useState<Set<string>>(new Set())
   
   // Track data source for banner
@@ -21,7 +19,6 @@ export default function QueueScreen() {
   useEffect(() => {
     setSel(new Set(queue.map(p => p.id)))
   }, [queue])
-  const [showImporter, setShowImporter] = useState(false)
   const [showOF4Note, setShowOF4Note] = useState(() => {
     // Check localStorage on mount
     return localStorage.getItem('blinders-hide-of4-note') !== 'true'
@@ -43,12 +40,6 @@ export default function QueueScreen() {
   useEffect(() => {
     themeManager.initializeTheme()
   }, [])
-  
-  const handleProjectsImported = async (projects: ProjectDTO[]) => {
-    await importOmniFocusProjectsWithTasks(projects)
-    await loadQueue()
-    setShowImporter(false)
-  }
   
   const handleSync = async () => {
     setIsSyncing(true)
@@ -132,64 +123,48 @@ export default function QueueScreen() {
             }}>
               Select projects to review
             </h2>
-            <div style={{ 
-              fontSize: '0.85em', 
-              opacity: 0.7,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px'
-            }}>
-              <span>Last synced: {lastSyncText}</span>
-              {syncManager.shouldAutoSync() && (
-                <span style={{ color: '#ffd700', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <AlertTriangle size={14} /> Cache is old - consider syncing
-                </span>
-              )}
-            </div>
           </div>
           
-          <div style={{ display: 'flex', gap: '12px' }}>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end' }}>
             <ThemeSelector />
             
-            <button
-              onClick={handleSync}
-              disabled={isSyncing}
-              style={{
-                background: isSyncing ? 'rgba(255, 255, 255, 0.1)' : 'rgba(76, 175, 80, 0.3)',
-                color: 'white',
-                border: '1px solid rgba(255, 255, 255, 0.3)',
-                borderRadius: '8px',
-                padding: '8px 16px',
-                cursor: isSyncing ? 'not-allowed' : 'pointer',
-                fontSize: '0.9em',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              <RefreshCw size={16} style={{ animation: isSyncing ? 'spin 1s linear infinite' : 'none' }} />
-              {isSyncing ? 'Syncing...' : 'Sync from OmniFocus'}
-            </button>
-            
-            <button
-              onClick={() => setShowImporter(true)}
-              style={{
-                background: 'rgba(255, 255, 255, 0.2)',
-                color: 'white',
-                border: '1px solid rgba(255, 255, 255, 0.3)',
-                borderRadius: '8px',
-                padding: '8px 16px',
-                cursor: 'pointer',
-                fontSize: '0.9em',
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-end' }}>
+              <button
+                onClick={handleSync}
+                disabled={isSyncing}
+                style={{
+                  background: isSyncing ? 'rgba(255, 255, 255, 0.1)' : 'rgba(76, 175, 80, 0.3)',
+                  color: 'white',
+                  border: '1px solid rgba(255, 255, 255, 0.3)',
+                  borderRadius: '8px',
+                  padding: '8px 16px',
+                  cursor: isSyncing ? 'not-allowed' : 'pointer',
+                  fontSize: '0.9em',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <RefreshCw size={16} style={{ animation: isSyncing ? 'spin 1s linear infinite' : 'none' }} />
+                {isSyncing ? 'Syncing...' : 'Re-Sync'}
+              </button>
+              
+              <div style={{ 
+                fontSize: '0.75em', 
+                opacity: 0.6,
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px'
-              }}
-            >
-              <FolderOpen size={16} />
-              Import File
-            </button>
+              }}>
+                <span>Last synced: {lastSyncText}</span>
+                {syncManager.shouldAutoSync() && (
+                  <span style={{ color: '#ffd700', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <AlertTriangle size={12} /> Cache is old
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
         </div>
         
@@ -337,13 +312,6 @@ export default function QueueScreen() {
           })}
         </ul>
       </div>
-      
-      {showImporter && (
-        <OmniFocusImporter
-          onProjectsImported={handleProjectsImported}
-          onClose={() => setShowImporter(false)}
-        />
-      )}
     </div>
     
     {/* Sticky button - OUTSIDE .page div so it's truly fixed to viewport */}
