@@ -233,124 +233,130 @@ JSON.stringify(activeProjects);`
   }
 }
 
+// Import SQLite reading modules
+let loadOmniFocusData
+try {
+  const loader = require('./omnifocus-data-loader.cjs')
+  loadOmniFocusData = loader.loadOmniFocusData
+  console.log('✅ SQLite loader module loaded successfully')
+} catch (error) {
+  console.error('❌ Failed to load SQLite loader module:', error.message)
+  console.error('   Will use JXA-only mode')
+  // Define a fallback that always uses JXA
+  loadOmniFocusData = async (jxaLoader) => {
+    const projects = await jxaLoader()
+    return {
+      projects,
+      source: 'jxa',
+      error: 'SQLite module failed to load'
+    }
+  }
+}
+
 // IPC handlers for OmniFocus integration
 ipcMain.handle('omnifocus:get-projects', async () => {
   try {
     console.time('omnifocus:get-projects')
     
-    // First check if OmniFocus is running
-    const checkScript = `tell application "System Events" to return (name of processes) contains "OmniFocus"`
-    try {
-      const { stdout: isRunningOutput } = await execAsync(`osascript -e '${checkScript}'`)
-      
-      if (!isRunningOutput.trim().toLowerCase().includes('true')) {
+    // JXA loader function for fallback
+    const jxaLoader = async () => {
+      // First check if OmniFocus is running
+      const checkScript = `tell application "System Events" to return (name of processes) contains "OmniFocus"`
+      try {
+        const { stdout: isRunningOutput } = await execAsync(`osascript -e '${checkScript}'`)
+        
+        if (!isRunningOutput.trim().toLowerCase().includes('true')) {
+          throw new Error('OmniFocus is not running. Please start OmniFocus and try again.')
+        }
+      } catch (error) {
+        console.error('Error checking OmniFocus status:', error.message)
         throw new Error('OmniFocus is not running. Please start OmniFocus and try again.')
       }
-    } catch (error) {
-      console.error('Error checking OmniFocus status:', error.message)
-      throw new Error('OmniFocus is not running. Please start OmniFocus and try again.')
-    }
-    
-    // Use persistent JXA script (no need to write file every time!)
-    const scriptPath = await ensureJXAScript()
-    
-    // Execute the persistent script directly
-    console.log('Executing JXA script...')
-    const { stdout: projectOutput, stderr } = await execAsync(`osascript -l JavaScript "${scriptPath}"`)
-    console.timeEnd('omnifocus:get-projects')
-    
-    if (stderr) {
-      console.error('AppleScript stderr:', stderr)
-      // Don't throw on stderr, just log it
-    }
-    
-    console.log('📊 JXA script output length:', projectOutput.length)
-    console.log('📊 First 500 chars of output:', projectOutput.substring(0, 500))
-    
-    if (!projectOutput || projectOutput.trim() === '') {
-      throw new Error('No projects found in OmniFocus')
-    }
-    
-    // Parse the JSON output from JXA
-    let projectData = []
-    try {
-      projectData = JSON.parse(projectOutput.trim())
-    } catch (parseError) {
-      console.error('Failed to parse JXA output as JSON:', parseError)
-      throw new Error('Failed to parse OmniFocus project data')
-    }
-    
-    console.log('📊 Parsed', projectData.length, 'projects from JXA')
-    if (projectData.length > 0) {
-      console.log('📊 First project from JXA:', JSON.stringify(projectData[0], null, 2).substring(0, 800))
-      // DEBUG: Check task contexts
-      if (projectData[0].tasks && projectData[0].tasks.length > 0) {
-        console.log('📊 First 3 tasks with context info:', projectData[0].tasks.slice(0, 3).map(t => ({
-          name: t.name,
-          context: t.context
-        })))
-      }
-    }
-    
-    const projects = []
-    
-    // Process the project data with tasks
-    for (let i = 0; i < projectData.length; i++) {
-      const project = projectData[i]
       
-      // Basic validation
-      if (project && project.name && project.name.trim() !== '') {
-        
-        // Convert OmniFocus status to our format
-        let status = 'active'
-        if (project.status === 'on hold') status = 'on_hold'
-        if (project.status === 'dropped') status = 'dropped'
-        
-        const processedProject = {
-          id: project.id || `of_${i}`,
-          name: project.name,
-          status: status,
-          deferDate: project.deferDate,
-          dueDate: project.dueDate,
-          reviewIntervalDays: project.reviewInterval || 7,
-          lastReviewDate: project.lastReviewDate,
-          nextReviewDate: project.nextReviewDate,
-          flagged: Boolean(project.flagged),
-          estimatedMinutes: project.estimatedMinutes,
-          note: project.note || '',
-          tags: [], // OmniFocus tags would need separate handling
-          tasks: project.tasks || []
-        }
-        
-        // DEBUG: Check if tasks with context are preserved
-        if (processedProject.tasks && processedProject.tasks.length > 0) {
-          const tasksWithContext = processedProject.tasks.filter(t => t.context).length
-          console.log(`📊 Project "${project.name}" has ${processedProject.tasks.length} tasks, ${tasksWithContext} with context`)
-        }
-        
-        projects.push(processedProject)
+      // Use persistent JXA script
+      const scriptPath = await ensureJXAScript()
+      
+      // Execute the persistent script directly
+      console.log('Executing JXA script...')
+      const { stdout: projectOutput, stderr } = await execAsync(`osascript -l JavaScript "${scriptPath}"`)
+    
+      if (stderr) {
+        console.error('AppleScript stderr:', stderr)
       }
+      
+      console.log('📊 JXA script output length:', projectOutput.length)
+      
+      if (!projectOutput || projectOutput.trim() === '') {
+        throw new Error('No projects found in OmniFocus')
+      }
+      
+      // Parse the JSON output from JXA
+      let projectData = []
+      try {
+        projectData = JSON.parse(projectOutput.trim())
+      } catch (parseError) {
+        console.error('Failed to parse JXA output as JSON:', parseError)
+        throw new Error('Failed to parse OmniFocus project data')
+      }
+      
+      console.log('📊 Parsed', projectData.length, 'projects from JXA')
+      
+      // Process and validate projects (existing logic)
+      const projects = []
+      
+      for (let i = 0; i < projectData.length; i++) {
+        const project = projectData[i]
+        
+        if (project && project.name && project.name.trim() !== '') {
+          let status = 'active'
+          if (project.status === 'on hold') status = 'on_hold'
+          if (project.status === 'dropped') status = 'dropped'
+          
+          const processedProject = {
+            id: project.id || `of_${i}`,
+            name: project.name,
+            status: status,
+            deferDate: project.deferDate,
+            dueDate: project.dueDate,
+            reviewIntervalDays: project.reviewInterval || 7,
+            lastReviewDate: project.lastReviewDate,
+            nextReviewDate: project.nextReviewDate,
+            flagged: Boolean(project.flagged),
+            estimatedMinutes: project.estimatedMinutes,
+            note: project.note || '',
+            tags: [],
+            tasks: project.tasks || []
+          }
+          
+          projects.push(processedProject)
+        }
+      }
+      
+      return projects
     }
     
+    // Try SQLite first, fallback to JXA
+    const result = await loadOmniFocusData(jxaLoader)
     
-    // Validate data structure consistency
-    const validatedProjects = projects.map(project => ({
-      id: project.id || `of_${Date.now()}_${Math.random()}`,
-      name: project.name || 'Unnamed Project',
-      status: project.status || 'active',
-      deferDate: project.deferDate,
-      dueDate: project.dueDate,
-      reviewIntervalDays: project.reviewIntervalDays || 7,
-      lastReviewDate: project.lastReviewDate,
-      nextReviewDate: project.nextReviewDate,
-      flagged: Boolean(project.flagged),
-      estimatedMinutes: project.estimatedMinutes,
-      note: project.note || '',
-      tags: Array.isArray(project.tags) ? project.tags : [],
-      tasks: project.tasks || [] // Include tasks in the validated projects
-    }))
+    console.timeEnd('omnifocus:get-projects')
+    console.log(`✅ Data loaded from: ${result.source}`)
+    console.log(`📊 Result structure:`, {
+      hasProjects: !!result.projects,
+      projectsType: typeof result.projects,
+      projectsLength: result.projects?.length,
+      source: result.source,
+      hasError: !!result.error
+    })
     
-    return validatedProjects
+    // Validate projects array
+    const validatedProjects = result.projects || []
+    
+    // Return projects with metadata about source
+    return {
+      projects: validatedProjects,
+      dataSource: result.source,
+      fallbackReason: result.error
+    }
   } catch (error) {
     console.error('AppleScript error:', error)
     console.error('Error details:', error.message)

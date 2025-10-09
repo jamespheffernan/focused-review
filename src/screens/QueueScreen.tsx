@@ -8,10 +8,14 @@ import type { ProjectDTO } from '../types'
 import { RefreshCw, FolderOpen, Info, AlertTriangle, ClipboardList, CheckCircle2, Ban } from 'lucide-react'
 import ThemeSelector from '../components/ThemeSelector'
 import { themeManager } from '../services/themeManager'
+import { DataSourceBanner } from '../components/DataSourceBanner'
 
 export default function QueueScreen() {
   const { queue, start, loadQueue, syncFromOmniFocus } = useApp()
   const [sel, setSel] = useState<Set<string>>(new Set())
+  
+  // Track data source for banner
+  const dataSourceInfo = syncManager.getDataSource()
   
   // Auto-select all projects when queue changes
   useEffect(() => {
@@ -188,6 +192,12 @@ export default function QueueScreen() {
             </button>
           </div>
         </div>
+        
+        {/* Data source banner - shows when using JXA fallback */}
+        <DataSourceBanner 
+          dataSource={dataSourceInfo.source} 
+          fallbackReason={dataSourceInfo.reason} 
+        />
         
         {syncError && (
           <div style={{

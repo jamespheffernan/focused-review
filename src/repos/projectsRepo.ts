@@ -91,9 +91,15 @@ export async function syncFromOmniFocus(): Promise<ProjectDTO[]> {
     if (omnifocusProjects.length > 0) {
       console.log('✅ Projects count > 0, starting import...')
       try {
-        // NOTE: Skip clear() - it can hang/deadlock in Electron
-        // bulkPut will overwrite existing data by ID anyway
-        console.log('📝 Preparing to import (will overwrite existing data)...')
+        // Clear old projects to prevent accumulation of dropped/completed items
+        console.log('🗑️ Clearing old projects from cache...')
+        await db.transaction('rw', db.projects, db.tasks, async () => {
+          await db.projects.clear()
+          await db.tasks.clear()
+          console.log('✅ Old data cleared')
+        })
+        
+        console.log('📝 Preparing to import fresh data...')
         
         // Check if projects have task data
         const hasTaskData = omnifocusProjects.some(p => p.tasks && Array.isArray(p.tasks))

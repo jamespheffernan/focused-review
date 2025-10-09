@@ -298,10 +298,26 @@ class OmniFocusBridge {
         throw new Error('Electron API not available')
       }
       
-      const projects = await window.electronAPI.omnifocus.getProjects()
+      const result = await window.electronAPI.omnifocus.getProjects()
       
-      console.log(`Bridge received ${projects.length} projects from Electron`)
+      // Handle new response format with metadata
+      const projects = Array.isArray(result) ? result : ((result as any).projects || [])
+      const dataSource = Array.isArray(result) ? 'unknown' : ((result as any).dataSource || 'unknown')
+      const fallbackReason = Array.isArray(result) ? undefined : (result as any).fallbackReason
+      
+      console.log(`Bridge received ${projects.length} projects from Electron (source: ${dataSource})`)
+      if (fallbackReason) {
+        console.warn(`Using fallback JXA method. Reason: ${fallbackReason}`)
+      }
       console.log('Sample project with tasks:', projects[0])
+      
+      // Store data source info globally for UI access
+      if (typeof window !== 'undefined') {
+        (window as any).__omnifocusDataSource = {
+          source: dataSource,
+          reason: fallbackReason
+        }
+      }
       
       // Convert Electron results to our format
       const convertedProjects = projects.map((project: any) => ({
@@ -320,7 +336,7 @@ class OmniFocusBridge {
         tasks: project.tasks || [] // CRITICAL: Preserve tasks from Electron
       }))
       
-      const totalTasks = convertedProjects.reduce((sum, p) => sum + (p.tasks?.length || 0), 0)
+      const totalTasks = convertedProjects.reduce((sum: number, p: any) => sum + (p.tasks?.length || 0), 0)
       console.log(`Bridge converted projects with ${totalTasks} total tasks`)
       
       // DEBUG: Check if review dates survived conversion

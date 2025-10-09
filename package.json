@@ -11,10 +11,12 @@
     "electron": "ELECTRON=true electron .",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5174 && electron .\"",
     "electron:build": "npm run build && electron-builder",
-    "electron:dist": "npm run build && electron-builder --publish=never"
+    "electron:dist": "npm run build && electron-builder --publish=never",
+    "electron:rebuild": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {
     "@notionhq/client": "^2.2.15",
+    "better-sqlite3": "^12.4.1",
     "chrono-node": "^2.9.0",
     "dexie": "^4.2.0",
     "idb-keyval": "^6.2.2",
@@ -25,7 +27,9 @@
     "zustand": "^5.0.8"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.0.1",
     "@eslint/js": "^9.36.0",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
     "@types/sql.js": "^1.4.9",
@@ -33,6 +37,7 @@
     "concurrently": "^9.2.1",
     "electron": "^38.2.0",
     "electron-builder": "^26.0.12",
+    "electron-rebuild": "^3.2.9",
     "eslint": "^9.36.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",

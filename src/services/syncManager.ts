@@ -4,6 +4,11 @@
 export class SyncManager {
   private readonly LAST_SYNC_KEY = 'omnifocus_last_sync'
   private readonly AUTO_SYNC_THRESHOLD_MINUTES = 60 // Auto-sync if data is older than 60 minutes
+  private readonly DATA_SOURCE_KEY = 'omnifocus_data_source'
+  private readonly FALLBACK_REASON_KEY = 'omnifocus_fallback_reason'
+  
+  private dataSource: 'sqlite' | 'jxa' = 'sqlite'
+  private fallbackReason?: string
 
   /**
    * Get the timestamp of the last successful sync
@@ -84,6 +89,52 @@ export class SyncManager {
    */
   hasCachedData(): boolean {
     return this.getLastSyncTimestamp() !== null
+  }
+
+  /**
+   * Set the data source used for the last sync
+   */
+  setDataSource(source: 'sqlite' | 'jxa', reason?: string): void {
+    this.dataSource = source
+    this.fallbackReason = reason
+    
+    // Persist to localStorage
+    localStorage.setItem(this.DATA_SOURCE_KEY, source)
+    if (reason) {
+      localStorage.setItem(this.FALLBACK_REASON_KEY, reason)
+    } else {
+      localStorage.removeItem(this.FALLBACK_REASON_KEY)
+    }
+  }
+
+  /**
+   * Get the current data source and fallback reason
+   */
+  getDataSource(): { source: 'sqlite' | 'jxa'; reason?: string } {
+    // Try to get from window global first (set by bridge during sync)
+    if (typeof window !== 'undefined' && (window as any).__omnifocusDataSource) {
+      const { source, reason } = (window as any).__omnifocusDataSource
+      return { source: source || this.dataSource, reason }
+    }
+    
+    // Fall back to stored values
+    const storedSource = localStorage.getItem(this.DATA_SOURCE_KEY) as 'sqlite' | 'jxa' | null
+    const storedReason = localStorage.getItem(this.FALLBACK_REASON_KEY) || undefined
+    
+    return {
+      source: storedSource || this.dataSource,
+      reason: storedReason || this.fallbackReason
+    }
+  }
+
+  /**
+   * Clear data source info
+   */
+  clearDataSource(): void {
+    this.dataSource = 'sqlite'
+    this.fallbackReason = undefined
+    localStorage.removeItem(this.DATA_SOURCE_KEY)
+    localStorage.removeItem(this.FALLBACK_REASON_KEY)
   }
 }
 
