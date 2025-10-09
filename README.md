@@ -137,6 +137,31 @@ The app automatically shows only projects that are **due or overdue** for review
    - OmniFocus's `lastReviewDate` is set to now, and `nextReviewDate` is recalculated
    - The project won't appear again until its next review is due
 
+---
+
+### Customizable Themes
+Personalize your review experience with 11 beautiful themes:
+
+- **Ocean**: Fresh teal and cyan tones (default)
+- **Sunset**: Warm pink, coral, and yellow gradients
+- **Forest**: Natural greens and lime
+- **Twilight**: Deep purple and violet tones
+- **Ember**: Fiery orange and amber
+- **DOS**: Retro terminal green on black
+- **Solarized Dark**: Low-contrast professional palette
+- **Monochrome**: Pure black and white minimalism
+- **Nord**: Nordic frost and muted pastels
+- **Dracula**: Purple and pink developer theme
+- **Cyberpunk**: Neon cyan and magenta futuristic colors
+
+#### Features
+- **Dynamic UI**: All buttons, indicators, and accents adapt to your chosen theme
+- **Grid Selector**: Visual 3-column grid showing gradient previews
+- **Persistent**: Theme preference saved locally and persists across sessions
+- **Cohesive Design**: Each theme provides unique colors for primary, secondary, success, warning, and danger states
+
+**To change themes**: Click the 🎨 Theme button in the top-right corner of any screen.
+
 ## Installation
 
 ### Prerequisites
