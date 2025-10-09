@@ -7,6 +7,8 @@ export interface ElectronAPI {
     getContexts: () => Promise<{ success: boolean; contexts: Array<{id: string; name: string}>; error?: string }>
     updateProject: (projectId: string, updates: any) => Promise<boolean>
     markProjectReviewed: (projectId: string) => Promise<{ success: boolean; projectId?: string; lastReviewDate?: string | null; nextReviewDate?: string | null; error?: string }>
+    markProjectComplete: (projectId: string) => Promise<{ success: boolean; projectId?: string; completed?: boolean; error?: string }>
+    dropProject: (projectId: string) => Promise<{ success: boolean; projectId?: string; status?: string; error?: string }>
     createTask: (projectId: string, taskName: string) => Promise<{ success: boolean; taskId?: string; taskName?: string; error?: string }>
     setTaskContext: (taskId: string, contextName: string) => Promise<{ success: boolean; taskId?: string; contextName?: string; error?: string }>
     setTaskDueDate: (taskId: string, dueDate: string | null) => Promise<{ success: boolean; taskId?: string; dueDate?: string | null; error?: string }>
@@ -38,6 +40,19 @@ export interface ElectronAPI {
       configured: boolean
       hasToken?: boolean
       hasDatabase?: boolean
+      archiveDb?: string | null
+      somedayDb?: string | null
+      error?: string
+    }>
+    moveToDatabase: (ofProjectId: string, targetDatabaseId: string, projectData?: {
+      ofId?: string
+      name?: string
+      status?: string
+    }) => Promise<{ 
+      success: boolean
+      oldPageId?: string
+      newPageId?: string
+      message?: string
       error?: string
     }>
   }

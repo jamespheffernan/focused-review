@@ -4,6 +4,7 @@ import { fetchTasksForProject, createTask, updateTask } from '../repos/tasksRepo
 import TaskItem from './TaskItem'
 import NewTaskForm from './NewTaskForm'
 import { taskSyncQueue } from '../services/taskSyncQueue'
+import { AlertTriangle, RefreshCw } from 'lucide-react'
 
 interface TaskListProps {
   projectId: string
@@ -91,9 +92,10 @@ export default function TaskList({
   }
 
   const handleTaskComplete = async (taskId: string, completed: boolean) => {
+    // In OmniFocus 4, completedDate is read-only and set automatically by markComplete()
     await handleTaskUpdate(taskId, { 
-      completed,
-      completedDate: completed ? new Date().toISOString() : undefined
+      completed
+      // Don't set completedDate - it's handled by OmniFocus when using markComplete()
     })
   }
 
@@ -143,14 +145,15 @@ export default function TaskList({
       {/* Failed Sync Indicator */}
       {failedSyncCount > 0 && (
         <div className="sync-error-banner">
-          <span className="sync-error-message">
-            ⚠️ {failedSyncCount} task{failedSyncCount > 1 ? 's' : ''} failed to sync
+          <span className="sync-error-message" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <AlertTriangle size={16} /> {failedSyncCount} task{failedSyncCount > 1 ? 's' : ''} failed to sync
           </span>
           <button 
             className="retry-sync-btn"
             onClick={() => taskSyncQueue.retryFailed()}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
           >
-            🔄 Retry
+            <RefreshCw size={14} /> Retry
           </button>
         </div>
       )}

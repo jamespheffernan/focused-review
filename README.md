@@ -1,11 +1,13 @@
-# Weekly Review HUD
+# Blinders
 
-A focused, distraction-free desktop application for conducting weekly reviews of your OmniFocus projects. Built with React, TypeScript, Vite, and Electron.
+A focused, distraction-free desktop application for conducting weekly reviews of your OmniFocus projects. Named after the horse equipment that helps maintain focus. Built with React, TypeScript, Vite, and Electron.
 
 ## Features
 
+> **Note:** Blinders is designed for **OmniFocus 4** and may not work with earlier versions.
+
 ### Core Functionality
-- **OmniFocus Integration**: Seamlessly sync projects and tasks from OmniFocus
+- **OmniFocus Integration**: Seamlessly sync projects and tasks from OmniFocus 4
 - **Guided Review Process**: Answer context-aware questions for each project
 - **Task Management**: View, edit, and manage tasks during your review
 - **Offline-First**: All data stored locally using IndexedDB with explicit sync
@@ -140,7 +142,7 @@ The app automatically shows only projects that are **due or overdue** for review
 ### Prerequisites
 - macOS (for OmniFocus integration)
 - Node.js 18+ and npm
-- OmniFocus 3 or later
+- **OmniFocus 4** (required)
 
 ### Development Setup
 

@@ -3,12 +3,18 @@ import { useApp } from './store'
 import QueueScreen from './screens/QueueScreen'
 import FocusScreen from './screens/FocusScreen'
 import SummaryScreen from './screens/SummaryScreen'
+import { taskSyncQueue } from './services/taskSyncQueue'
 import './App.css'
 
 export default function App() {
   const { route, loadQueue } = useApp()
   
   useEffect(() => { 
+    // Clear any stale sync queue items from previous sessions
+    // This prevents issues with invalid merged updates from before bug fixes
+    console.log('[App] Clearing task sync queue on startup')
+    taskSyncQueue.clearAll()
+    
     loadQueue()
     
     // Check Notion configuration on startup

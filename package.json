@@ -1,5 +1,5 @@
 {
-  "name": "weekly-review-hud",
+  "name": "blinders",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -15,8 +15,10 @@
   },
   "dependencies": {
     "@notionhq/client": "^2.2.15",
+    "chrono-node": "^2.9.0",
     "dexie": "^4.2.0",
     "idb-keyval": "^6.2.2",
+    "lucide-react": "^0.545.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "sql.js": "^1.13.0",
@@ -43,8 +45,8 @@
   },
   "main": "electron/main.cjs",
   "build": {
-    "appId": "com.weeklyreviewhud.app",
-    "productName": "Weekly Review HUD",
+    "appId": "com.blinders.app",
+    "productName": "Blinders",
     "directories": {
       "output": "dist-electron"
     },

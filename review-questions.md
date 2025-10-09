@@ -74,5 +74,5 @@ These questions are asked on follow-up reviews (after the first review):
 
 ## Question Types
 - `text`: Free-form text input
-- `mood`: Emoji mood selector (😔 Low, 😐 Neutral, 😊 High)
+- `mood`: Emoji mood selector with 1-3 scale (1=😔 Low, 2=😐 Neutral, 3=😊 High)
 

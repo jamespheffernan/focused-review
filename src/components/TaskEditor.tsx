@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { TaskDTO } from '../types'
 import { omnifocusBridge } from '../services/omnifocus-bridge'
+import { parseNaturalDate, describeNaturalDate } from '../utils/date-parser'
 
 interface TaskEditorProps {
   task: TaskDTO
@@ -19,6 +20,10 @@ export default function TaskEditor({ task, onSave, onCancel }: TaskEditorProps) 
   const [loadingContexts, setLoadingContexts] = useState(false)
   const [showContextDropdown, setShowContextDropdown] = useState(false)
   const [filteredContexts, setFilteredContexts] = useState<Array<{id: string; name: string}>>([])
+  const [naturalDueDate, setNaturalDueDate] = useState('')
+  const [naturalDeferDate, setNaturalDeferDate] = useState('')
+  const [dueDatePreview, setDueDatePreview] = useState<string | null>(null)
+  const [deferDatePreview, setDeferDatePreview] = useState<string | null>(null)
 
   // Fetch contexts from OmniFocus
   useEffect(() => {
@@ -62,7 +67,59 @@ export default function TaskEditor({ task, onSave, onCancel }: TaskEditorProps) 
     setContext(task.context || '')
     setNote(task.note || '')
     setError('')
+    setNaturalDueDate('')
+    setNaturalDeferDate('')
+    setDueDatePreview(null)
+    setDeferDatePreview(null)
   }, [task.id])
+
+  // Handle natural language due date input
+  useEffect(() => {
+    if (naturalDueDate.trim()) {
+      const parsed = parseNaturalDate(naturalDueDate)
+      const preview = describeNaturalDate(naturalDueDate)
+      setDueDatePreview(preview)
+      if (parsed) {
+        setDueDate(parsed)
+      }
+    } else {
+      setDueDatePreview(null)
+    }
+  }, [naturalDueDate])
+
+  // Handle natural language defer date input
+  useEffect(() => {
+    if (naturalDeferDate.trim()) {
+      const parsed = parseNaturalDate(naturalDeferDate)
+      const preview = describeNaturalDate(naturalDeferDate)
+      setDeferDatePreview(preview)
+      if (parsed) {
+        setDeferDate(parsed)
+      }
+    } else {
+      setDeferDatePreview(null)
+    }
+  }, [naturalDeferDate])
+
+  // Helper to create date at start of day (defer dates)
+  const createDeferDate = (dateString: string): string => {
+    // Parse date in YYYY-MM-DD format to avoid timezone issues
+    const [year, month, day] = dateString.split('-').map(Number)
+    const date = new Date(year, month - 1, day) // month is 0-indexed
+    // Set to 7am local time (start of working day)
+    date.setHours(7, 0, 0, 0)
+    return date.toISOString()
+  }
+
+  // Helper to create date at end of day (due dates)
+  const createDueDate = (dateString: string): string => {
+    // Parse date in YYYY-MM-DD format to avoid timezone issues
+    const [year, month, day] = dateString.split('-').map(Number)
+    const date = new Date(year, month - 1, day) // month is 0-indexed
+    // Set to 9pm local time (end of working day)
+    date.setHours(21, 0, 0, 0)
+    return date.toISOString()
+  }
 
   const handleSave = () => {
     if (!name.trim()) {
@@ -75,13 +132,13 @@ export default function TaskEditor({ task, onSave, onCancel }: TaskEditorProps) 
     }
 
     if (dueDate) {
-      updates.dueDate = new Date(dueDate).toISOString()
+      updates.dueDate = createDueDate(dueDate)
     } else {
       updates.dueDate = undefined
     }
 
     if (deferDate) {
-      updates.deferDate = new Date(deferDate).toISOString()
+      updates.deferDate = createDeferDate(deferDate)
     } else {
       updates.deferDate = undefined
     }
@@ -103,6 +160,9 @@ export default function TaskEditor({ task, onSave, onCancel }: TaskEditorProps) 
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      handleSave()
+    } else if (e.key === 's' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault() // Prevent browser save dialog
       handleSave()
     } else if (e.key === 'Escape') {
       onCancel()
@@ -133,6 +193,19 @@ export default function TaskEditor({ task, onSave, onCancel }: TaskEditorProps) 
             onChange={(e) => setDeferDate(e.target.value)}
             placeholder="Defer until"
           />
+          <input
+            className="task-natural-date-input"
+            type="text"
+            value={naturalDeferDate}
+            onChange={(e) => setNaturalDeferDate(e.target.value)}
+            placeholder="Or type: tomorrow, next Friday, in 2 weeks..."
+            style={{ marginTop: '4px', fontSize: '0.85em', opacity: 0.9 }}
+          />
+          {deferDatePreview && (
+            <div style={{ fontSize: '0.8em', color: '#4CAF50', marginTop: '2px' }}>
+              ✓ {deferDatePreview}
+            </div>
+          )}
         </div>
 
         <div className="editor-field">
@@ -144,6 +217,19 @@ export default function TaskEditor({ task, onSave, onCancel }: TaskEditorProps) 
             onChange={(e) => setDueDate(e.target.value)}
             placeholder="Due date"
           />
+          <input
+            className="task-natural-date-input"
+            type="text"
+            value={naturalDueDate}
+            onChange={(e) => setNaturalDueDate(e.target.value)}
+            placeholder="Or type: tomorrow, next Friday, in 2 weeks..."
+            style={{ marginTop: '4px', fontSize: '0.85em', opacity: 0.9 }}
+          />
+          {dueDatePreview && (
+            <div style={{ fontSize: '0.8em', color: '#4CAF50', marginTop: '2px' }}>
+              ✓ {dueDatePreview}
+            </div>
+          )}
         </div>
       </div>
 

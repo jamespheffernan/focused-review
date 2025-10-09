@@ -5,6 +5,9 @@ import { importOmniFocusProjectsWithTasks, getOmniFocusIntegrationStatus } from 
 import { getTaskStatisticsBatch } from '../repos/tasksRepo'
 import { syncManager } from '../services/syncManager'
 import type { ProjectDTO } from '../types'
+import { RefreshCw, FolderOpen, Info, AlertTriangle, ClipboardList, CheckCircle2, Ban } from 'lucide-react'
+import ThemeSelector from '../components/ThemeSelector'
+import { themeManager } from '../services/themeManager'
 
 export default function QueueScreen() {
   const { queue, start, loadQueue, syncFromOmniFocus } = useApp()
@@ -15,6 +18,10 @@ export default function QueueScreen() {
     setSel(new Set(queue.map(p => p.id)))
   }, [queue])
   const [showImporter, setShowImporter] = useState(false)
+  const [showOF4Note, setShowOF4Note] = useState(() => {
+    // Check localStorage on mount
+    return localStorage.getItem('blinders-hide-of4-note') !== 'true'
+  })
   const [taskStats, setTaskStats] = useState<Record<string, {total: number, next: number, available: number, blocked: number, completed: number}>>({})
   const [isSyncing, setIsSyncing] = useState(false)
   const [lastSyncText, setLastSyncText] = useState<string>('')
@@ -27,6 +34,11 @@ export default function QueueScreen() {
   useEffect(() => {
     setLastSyncText(syncManager.getTimeSinceLastSync())
   }, [queue])
+  
+  // Initialize theme on mount
+  useEffect(() => {
+    themeManager.initializeTheme()
+  }, [])
   
   const handleProjectsImported = async (projects: ProjectDTO[]) => {
     await importOmniFocusProjectsWithTasks(projects)
@@ -88,16 +100,17 @@ export default function QueueScreen() {
   }, [queue])
   
   return (
-    <div className="page">
-      <h1 style={{ 
-        fontSize: '3em', 
-        fontWeight: '700', 
-        textAlign: 'center', 
-        marginBottom: '40px',
-        textShadow: '0 2px 4px rgba(0, 0, 0, 0.1)'
-      }}>
-        Weekly Review Queue
-      </h1>
+    <>
+      <div className="page">
+        <h1 style={{ 
+          fontSize: '3em', 
+          fontWeight: '700', 
+          textAlign: 'center', 
+          marginBottom: '40px',
+          textShadow: '0 2px 4px rgba(0, 0, 0, 0.1)'
+        }}>
+          Blinders
+        </h1>
       
       <div style={{ 
         background: 'rgba(255, 255, 255, 0.1)', 
@@ -124,12 +137,16 @@ export default function QueueScreen() {
             }}>
               <span>Last synced: {lastSyncText}</span>
               {syncManager.shouldAutoSync() && (
-                <span style={{ color: '#ffd700' }}>⚠️ Cache is old - consider syncing</span>
+                <span style={{ color: '#ffd700', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <AlertTriangle size={14} /> Cache is old - consider syncing
+                </span>
               )}
             </div>
           </div>
           
           <div style={{ display: 'flex', gap: '12px' }}>
+            <ThemeSelector />
+            
             <button
               onClick={handleSync}
               disabled={isSyncing}
@@ -147,7 +164,8 @@ export default function QueueScreen() {
                 transition: 'all 0.2s ease'
               }}
             >
-              {isSyncing ? '⏳ Syncing...' : '🔄 Sync from OmniFocus'}
+              <RefreshCw size={16} style={{ animation: isSyncing ? 'spin 1s linear infinite' : 'none' }} />
+              {isSyncing ? 'Syncing...' : 'Sync from OmniFocus'}
             </button>
             
             <button
@@ -165,7 +183,8 @@ export default function QueueScreen() {
                 gap: '8px'
               }}
             >
-              📁 Import File
+              <FolderOpen size={16} />
+              Import File
             </button>
           </div>
         </div>
@@ -180,7 +199,47 @@ export default function QueueScreen() {
             color: '#ff4444',
             fontSize: '0.9em'
           }}>
-            <strong>⚠️ Error:</strong> {syncError}
+            <strong style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <AlertTriangle size={16} /> Error:
+            </strong> {syncError}
+          </div>
+        )}
+        
+        {showOF4Note && (
+          <div style={{
+            marginBottom: '20px',
+            padding: '12px',
+            background: 'rgba(100, 181, 246, 0.2)',
+            border: '1px solid rgba(100, 181, 246, 0.3)',
+            borderRadius: '8px',
+            fontSize: '0.85em',
+            opacity: 0.9,
+            position: 'relative'
+          }}>
+            <button
+              onClick={() => {
+                localStorage.setItem('blinders-hide-of4-note', 'true')
+                setShowOF4Note(false)
+              }}
+              style={{
+                position: 'absolute',
+                top: '8px',
+                right: '8px',
+                background: 'transparent',
+                border: 'none',
+                color: 'rgba(255, 255, 255, 0.7)',
+                cursor: 'pointer',
+                fontSize: '1.2em',
+                padding: '4px 8px',
+                lineHeight: 1
+              }}
+              title="Dismiss"
+            >
+              ✕
+            </button>
+            <strong style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <Info size={16} /> Note:
+            </strong> This app is designed for OmniFocus 4 and may not work with earlier versions.
           </div>
         )}
         
@@ -229,23 +288,23 @@ export default function QueueScreen() {
                           opacity: 0.8
                         }}>
                           {stats.next > 0 && (
-                            <span style={{ color: '#4CAF50' }} title="Next Actions">
-                              ▶️ {stats.next}
+                            <span style={{ color: '#4CAF50', display: 'inline-flex', alignItems: 'center', gap: '4px' }} title="Next Actions">
+                              <ClipboardList size={14} /> {stats.next}
                             </span>
                           )}
                           {stats.available > 0 && (
-                            <span style={{ color: '#2196F3' }} title="Available">
-                              📋 {stats.available}
+                            <span style={{ color: '#2196F3', display: 'inline-flex', alignItems: 'center', gap: '4px' }} title="Available">
+                              <ClipboardList size={14} /> {stats.available}
                             </span>
                           )}
                           {stats.blocked > 0 && (
-                            <span style={{ color: '#FF9800' }} title="Blocked">
-                              🚫 {stats.blocked}
+                            <span style={{ color: '#FF9800', display: 'inline-flex', alignItems: 'center', gap: '4px' }} title="Blocked">
+                              <Ban size={14} /> {stats.blocked}
                             </span>
                           )}
                           {stats.completed > 0 && (
-                            <span style={{ color: '#9E9E9E' }} title="Completed">
-                              ✅ {stats.completed}
+                            <span style={{ color: '#9E9E9E', display: 'inline-flex', alignItems: 'center', gap: '4px' }} title="Completed">
+                              <CheckCircle2 size={14} /> {stats.completed}
                             </span>
                           )}
                         </div>
@@ -267,16 +326,6 @@ export default function QueueScreen() {
             )
           })}
         </ul>
-        
-        <div className="actions sticky-actions">
-          <button 
-            className="primary" 
-            onClick={() => start(ids.length ? ids : queue.map(p=>p.id))}
-            style={{ fontSize: '1.2em', padding: '20px 40px' }}
-          >
-            Start Review ({ids.length || queue.length} projects)
-          </button>
-        </div>
       </div>
       
       {showImporter && (
@@ -286,5 +335,17 @@ export default function QueueScreen() {
         />
       )}
     </div>
+    
+    {/* Sticky button - OUTSIDE .page div so it's truly fixed to viewport */}
+    <div className="actions sticky-actions">
+      <button 
+        className="primary" 
+        onClick={() => start(ids.length ? ids : queue.map(p=>p.id))}
+        style={{ fontSize: '1.2em', padding: '20px 40px' }}
+      >
+        Start Review ({ids.length || queue.length} projects)
+      </button>
+    </div>
+    </>
   )
 }

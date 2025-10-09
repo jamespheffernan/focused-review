@@ -11,7 +11,9 @@ export default function AnsweredList({ items, activeQuestionID, onSelect }:{
           <li key={it.questionID}>
             <button style={{ background: it.questionID===activeQuestionID ? '#f2f2f2' : 'transparent' }}
                     onClick={() => onSelect(it.questionID)}>
-              <b>{it.questionLabel}</b> · <span style={{ opacity:.7 }}>{it.previewText}</span>
+              <b>{it.questionLabel}</b> · <span style={{ opacity:.7 }}>
+                {it.status === 'CarriedForward' && '[u] '}{it.previewText}
+              </span>
             </button>
           </li>)}
       </ul>

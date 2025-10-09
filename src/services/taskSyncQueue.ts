@@ -18,13 +18,50 @@ class TaskSyncQueue {
 
   // Add a task update to the queue
   add(taskId: string, updates: Partial<TaskDTO>) {
-    console.log('[TaskSyncQueue] Adding task to sync queue:', taskId)
+    console.log('[TaskSyncQueue] Adding task to sync queue:', taskId, updates)
     
-    // Check if task is already in queue, update it if so
+    // Check if task is already in queue
     const existingIndex = this.queue.findIndex(item => item.taskId === taskId)
     if (existingIndex >= 0) {
-      this.queue[existingIndex].updates = { ...this.queue[existingIndex].updates, ...updates }
-      this.queue[existingIndex].timestamp = Date.now()
+      const existing = this.queue[existingIndex]
+      const merged = { ...existing.updates, ...updates }
+      
+      // OmniFocus 4 constraint: Cannot update completion AND other properties in same operation
+      // If merge would combine both, split into separate operations
+      const hasCompletion = merged.completed !== undefined
+      const hasOtherProps = Object.keys(merged).some(key => 
+        key !== 'completed' && key !== 'completedDate'
+      )
+      
+      if (hasCompletion && hasOtherProps) {
+        console.log('[TaskSyncQueue] ⚠️ Split required: completion + property updates detected')
+        
+        // Split the merged updates into two separate operations
+        // First operation: only completion state
+        const completionOnly: Partial<TaskDTO> = { completed: merged.completed }
+        if (merged.completedDate !== undefined) {
+          completionOnly.completedDate = merged.completedDate
+        }
+        
+        // Second operation: all other properties (excluding completion)
+        const { completed, completedDate, ...otherProps } = merged
+        
+        // Update existing item to only have completion
+        this.queue[existingIndex].updates = completionOnly
+        this.queue[existingIndex].timestamp = Date.now()
+        
+        // Add new item for other properties (will be processed after completion)
+        this.queue.push({
+          taskId,
+          updates: otherProps,
+          timestamp: Date.now(),
+          retryCount: 0
+        })
+      } else {
+        // Safe to merge - either only completion or only properties
+        this.queue[existingIndex].updates = merged
+        this.queue[existingIndex].timestamp = Date.now()
+      }
     } else {
       this.queue.push({
         taskId,
@@ -54,7 +91,59 @@ class TaskSyncQueue {
 
       try {
         console.log('[TaskSyncQueue] Syncing task:', item.taskId)
-        const result = await omnifocusBridge.updateTask(item.taskId, item.updates)
+        console.log('[TaskSyncQueue] Task updates:', JSON.stringify(item.updates))
+        
+        // Filter out read-only properties for OmniFocus 4
+        // completedDate is set automatically by markComplete()
+        const { completedDate, ...syncUpdates } = item.updates
+        if (completedDate !== undefined) {
+          console.log('[TaskSyncQueue] Filtered out completedDate (read-only in OmniFocus 4)')
+        }
+        
+        console.log('[TaskSyncQueue] After filtering completedDate:', JSON.stringify(syncUpdates))
+        
+        // Additional safety check: detect if we're trying to sync both completion and properties
+        // This shouldn't happen with the fixed add() method, but protects against items
+        // that were already in the queue before the fix
+        const hasCompletion = syncUpdates.completed !== undefined
+        const hasOtherProps = Object.keys(syncUpdates).some(key => key !== 'completed')
+        
+        console.log('[TaskSyncQueue] hasCompletion:', hasCompletion, 'hasOtherProps:', hasOtherProps)
+        
+        if (hasCompletion && hasOtherProps) {
+          console.log('[TaskSyncQueue] ⚠️ Detected invalid merged update during processing, splitting...')
+          
+          // Split this item: keep only completion in current item
+          const completionOnly = { completed: syncUpdates.completed }
+          const { completed, ...otherProps } = syncUpdates
+          
+          // Update current item to only have completion
+          item.updates = completionOnly
+          
+          // Add other properties as next queue item (insert at position 1, not at end)
+          this.queue.splice(1, 0, {
+            taskId: item.taskId,
+            updates: otherProps,
+            timestamp: Date.now(),
+            retryCount: 0
+          })
+          
+          console.log('[TaskSyncQueue] Split complete. Processing completion first, then properties.')
+          
+          // Now process the completion-only update
+          const result = await omnifocusBridge.updateTask(item.taskId, completionOnly)
+          
+          if (result.success) {
+            console.log('[TaskSyncQueue] ✅ Completion synced, will process properties next')
+            this.queue.shift() // Remove completion item, properties item is now first
+            this.notifyListeners()
+            continue // Move to next item (the properties)
+          } else {
+            throw new Error(result.error || 'Unknown error')
+          }
+        }
+        
+        const result = await omnifocusBridge.updateTask(item.taskId, syncUpdates)
 
         if (result.success) {
           console.log('[TaskSyncQueue] ✅ Task synced successfully:', item.taskId)
@@ -114,6 +203,21 @@ class TaskSyncQueue {
   // Get pending items count
   getPendingCount(): number {
     return this.queue.length
+  }
+
+  // Clear all failed items
+  clearFailed() {
+    console.log('[TaskSyncQueue] Clearing all failed items:', this.failedItems.length)
+    this.failedItems = []
+    this.notifyListeners()
+  }
+
+  // Clear all pending items (use with caution)
+  clearAll() {
+    console.log('[TaskSyncQueue] Clearing all queue items')
+    this.queue = []
+    this.failedItems = []
+    this.notifyListeners()
   }
 
   // Subscribe to changes

@@ -4,19 +4,17 @@ import { getQuestionsForProject } from './question-loader'
 import { hasBeenReviewedBefore } from '../repos/answersRepo'
 
 /**
- * Convert engagement score (1-5) to emoji and text
+ * Convert engagement score (1-3) to emoji and text
  */
 function formatEngagementScore(score: number): string {
   const emojiMap: Record<number, string> = {
     1: '😔 Low',
     2: '😐 Neutral',
-    3: '😊 High',
-    4: '😊 High',
-    5: '😊 High'
+    3: '😊 High'
   }
   
   const emoji = emojiMap[score] || '😐 Neutral'
-  return `${emoji} (${score}/5)`
+  return `${emoji} (${score}/3)`
 }
 
 /**

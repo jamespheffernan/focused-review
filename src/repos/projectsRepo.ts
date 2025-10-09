@@ -312,6 +312,7 @@ export async function importOmniFocusProjectsWithTasks(projects: any[]) {
             name: task.name,
             status: task.status || 'available',
             dueDate: task.dueDate || null,
+            deferDate: task.deferDate || null,
             context: task.context || null,
             flagged: task.flagged || false,
             note: task.note || '',

@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getContexts: () => ipcRenderer.invoke('omnifocus:get-contexts'),
     updateProject: (projectId, updates) => ipcRenderer.invoke('omnifocus:update-project', projectId, updates),
     markProjectReviewed: (projectId) => ipcRenderer.invoke('omnifocus:mark-project-reviewed', projectId),
+    markProjectComplete: (projectId) => ipcRenderer.invoke('omnifocus:mark-project-complete', projectId),
+    dropProject: (projectId) => ipcRenderer.invoke('omnifocus:drop-project', projectId),
     createTask: (projectId, taskName) => ipcRenderer.invoke('omnifocus:create-task', projectId, taskName),
     setTaskContext: (taskId, contextName) => ipcRenderer.invoke('omnifocus:set-task-context', taskId, contextName),
     setTaskDueDate: (taskId, dueDate) => ipcRenderer.invoke('omnifocus:set-task-due-date', taskId, dueDate),
@@ -34,7 +36,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Notion sync operations
   notion: {
     syncReview: (projectId, weekOf, formattedMarkdown) => ipcRenderer.invoke('notion:sync-review', projectId, weekOf, formattedMarkdown),
-    isConfigured: () => ipcRenderer.invoke('notion:is-configured')
+    isConfigured: () => ipcRenderer.invoke('notion:is-configured'),
+    moveToDatabase: (pageId, targetDatabaseId, projectData) => ipcRenderer.invoke('notion:move-to-database', pageId, targetDatabaseId, projectData)
   },
   
   // Platform info

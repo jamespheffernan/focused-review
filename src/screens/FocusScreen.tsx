@@ -9,39 +9,29 @@ import TimerCircle from '../components/TimerCircle'
 import KeyboardShortcuts from '../components/KeyboardShortcuts'
 import TaskList from '../components/TaskList'
 import { extractNotionLink, getNotionLinkError, hasNotionLink } from '../utils/notionLink'
+import { FileText, SkipForward, CheckCircle, RefreshCw } from 'lucide-react'
 
 export default function FocusScreen({ projectIndex }: { projectIndex: number }) {
-  const { queue, currentProjectQuestions, setDraft, markReviewedAndNext, skipAndNext, loadProjectQuestions } = useApp()
+  const { queue, currentProjectQuestions, setDraft, markReviewedAndNext, skipAndNext, markCompleteAndNext, archiveAndNext, somedayMaybeAndNext, loadProjectQuestions } = useApp()
   const project = queue[projectIndex]
   const [idx, setIdx] = useState(0)
   const [remaining, setRemaining] = useState(30)
   const timer = useMemo(() => createTimer(setRemaining), [])
-  const [answeredQuestions, setAnsweredQuestions] = useState<Array<{id: string, prompt: string, answer: string, status: 'answered' | 'skipped'}>>([])
+  const [answeredQuestions, setAnsweredQuestions] = useState<Array<{id: string, prompt: string, answer: string, status: 'answered' | 'skipped', draftStatus?: 'CarriedForward' | 'Updated' | 'New'}>>([])
   const [currentAnswer, setCurrentAnswer] = useState('')
   const [lastWeekAnswer, setLastWeekAnswer] = useState('')
+  const [lastWeekStatus, setLastWeekStatus] = useState<'CarriedForward' | 'Updated' | 'New'>('New')
   const [projectTasks, setProjectTasks] = useState<TaskDTO[]>([])
   const [tasksLoading, setTasksLoading] = useState(false)
   const [selectedMood, setSelectedMood] = useState<number | null>(null)
+  const [showConfirmation, setShowConfirmation] = useState(false)
 
   const q = currentProjectQuestions[idx]
 
-  // Safety check for undefined project
-  if (!project) {
-    return <div className="focus-screen">Loading project...</div>
-  }
-
-  // Show loading state if no questions are loaded yet
-  if (currentProjectQuestions.length === 0) {
-    return <div className="focus-screen">Loading questions...</div>
-  }
-
-  // Safety check for undefined question
-  if (!q) {
-    return <div className="focus-screen">Loading questions...</div>
-  }
-
   // Load tasks for the current project
   const loadProjectTasks = useCallback(async () => {
+    if (!project) return // Guard clause inside callback
+    
     try {
       setTasksLoading(true)
       const tasks = await fetchTasksForProject(project.id)
@@ -57,19 +47,22 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
     } finally {
       setTasksLoading(false)
     }
-  }, [project.id, project.name])
+  }, [project?.id, project?.name])
 
   // Reset question index and answered questions when project changes
   useEffect(() => {
+    if (!project) return // Guard against undefined project
+    
     setIdx(0)
     setAnsweredQuestions([])
     setCurrentAnswer('')
     setLastWeekAnswer('')
+    setShowConfirmation(false) // Reset confirmation overlay when project changes
     // Load context-aware questions for the current project
     loadProjectQuestions(project)
     // Auto-load tasks for the current project
     loadProjectTasks()
-  }, [project.id, projectIndex, loadProjectQuestions, loadProjectTasks])
+  }, [project?.id, projectIndex, loadProjectQuestions, loadProjectTasks, project])
 
   // Handle task updates
   const handleTaskUpdate = async (taskId: string, updates: Partial<TaskDTO>) => {
@@ -92,10 +85,12 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
   }
 
   useEffect(() => { 
+    if (!project || !q) return // Guard against undefined
+    
     timer.start(30)
     // Load current answer and last week's answer
     loadAnswers()
-  }, [idx, project.id, q.id])
+  }, [idx, project?.id, q?.id])
 
   // Force re-render when remaining time changes
   useEffect(() => {
@@ -104,14 +99,16 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
 
   // Enhanced keyboard navigation
   useEffect(() => {
+    if (!project || !q) return // Guard against undefined
+    
     const handleKeyDown = (e: KeyboardEvent) => {
       // Only handle shortcuts when not typing in input fields
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return
       }
 
-      // Handle number keys 1-5 for engagement slider (question 5)
-      if (q.id === 'q-engage' && ['1', '2', '3', '4', '5'].includes(e.key)) {
+      // Handle number keys 1-3 for engagement slider (question 6)
+      if (q.id === 'q-engage' && ['1', '2', '3'].includes(e.key)) {
         e.preventDefault()
         const engagementValue = parseInt(e.key)
         handleEngagementChange(engagementValue)
@@ -151,20 +148,23 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
           break
         case ' ':
           e.preventDefault()
-          // Mark reviewed and next
-          markReviewedAndNext(project, projectIndex)
+          // Mark reviewed and next (with overlay)
+          handleMarkReviewed()
           break
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [idx, currentProjectQuestions.length, project, projectIndex, skipAndNext, markReviewedAndNext, q.id, handleEngagementChange])
+  }, [idx, currentProjectQuestions.length, project, projectIndex, skipAndNext, markReviewedAndNext, q?.id, q, handleEngagementChange])
 
   const loadAnswers = async () => {
+    if (!project || !q) return // Guard against undefined
+    
     const prev = await latest(project.id, q.id)
     setLastWeekAnswer(prev?.text ?? '')
     setCurrentAnswer(prev?.text ?? '')
+    setLastWeekStatus(prev?.status ?? 'New')
   }
 
   const startOfISOWeek = () => {
@@ -172,6 +172,8 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
   }
 
   async function handleTextChange(text: string) {
+    if (!project || !q) return // Guard against undefined
+    
     setCurrentAnswer(text)
     const prev = await latest(project.id, q.id)
     
@@ -196,16 +198,18 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
     if (existingIndex >= 0) {
       // Update existing answer
       const updated = [...answeredQuestions]
-      updated[existingIndex] = { id: q.id, prompt: q.prompt, answer: text, status: 'answered' }
+      updated[existingIndex] = { id: q.id, prompt: q.prompt, answer: text, status: 'answered', draftStatus: draft.status }
       setAnsweredQuestions(updated)
     } else {
       // Add new answer
-      setAnsweredQuestions([...answeredQuestions, { id: q.id, prompt: q.prompt, answer: text, status: 'answered' }])
+      setAnsweredQuestions([...answeredQuestions, { id: q.id, prompt: q.prompt, answer: text, status: 'answered', draftStatus: draft.status }])
     }
   }
 
 
   async function handleEngagementChange(score?: number) {
+    if (!project || !q) return // Guard against undefined
+    
     // Get existing answer for this week to reuse its ID (avoid creating duplicates)
     const currentWeek = startOfISOWeek()
     const existingThisWeek = await db.answers
@@ -226,11 +230,11 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
     if (existingIndex >= 0) {
       // Update existing answer
       const updated = [...answeredQuestions]
-      updated[existingIndex] = { id: q.id, prompt: q.prompt, answer: `Engagement: ${score}/5`, status: 'answered' }
+      updated[existingIndex] = { id: q.id, prompt: q.prompt, answer: `Engagement: ${score}/3`, status: 'answered' }
       setAnsweredQuestions(updated)
     } else {
       // Add new answer
-      setAnsweredQuestions([...answeredQuestions, { id: q.id, prompt: q.prompt, answer: `Engagement: ${score}/5`, status: 'answered' }])
+      setAnsweredQuestions([...answeredQuestions, { id: q.id, prompt: q.prompt, answer: `Engagement: ${score}/3`, status: 'answered' }])
     }
   }
 
@@ -255,8 +259,12 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
   function moveToNextQuestion() {
     const nextIdx = idx + 1
     if (nextIdx >= currentProjectQuestions.length) {
-      // Last question - complete the review
-      markReviewedAndNext(project, projectIndex)
+      // Last question - show confirmation and complete the review
+      setShowConfirmation(true)
+      setTimeout(() => {
+        setShowConfirmation(false)
+        markReviewedAndNext(project, projectIndex)
+      }, 1500)
     } else {
       // Mark current question as skipped if not answered
       const hasAnswer = answeredQuestions.some(aq => aq.id === q.id && aq.status === 'answered')
@@ -267,8 +275,22 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
     }
   }
 
+  // Function to handle mark reviewed with overlay
+  function handleMarkReviewed() {
+    // Show confirmation overlay
+    setShowConfirmation(true)
+    
+    // Wait 1 second, then transition
+    setTimeout(() => {
+      setShowConfirmation(false)
+      markReviewedAndNext(project, projectIndex)
+    }, 1000)
+  }
+
   // Function to open Notion deep link for current project
   async function openNotionLink() {
+    if (!project) return // Guard against undefined
+    
     try {
       // Extract Notion link from project notes
       const notionUrl = extractNotionLink(project.notes)
@@ -300,7 +322,32 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
     }
   }
 
+  // Safety checks AFTER all hooks have been called
+  if (!project) {
+    return <div className="focus-screen">Loading project...</div>
+  }
+
+  if (currentProjectQuestions.length === 0) {
+    return <div className="focus-screen">Loading questions...</div>
+  }
+
+  if (!q) {
+    return <div className="focus-screen">Loading questions...</div>
+  }
+
+  // Calculate progress
+  const progress = queue.length > 0 ? ((projectIndex + 1) / queue.length) * 100 : 0
+
   return (
+    <>
+    {/* Progress Indicator Bar */}
+    <div className="progress-bar-container">
+      <div 
+        className="progress-bar-fill" 
+        style={{ width: `${progress}%` }}
+      />
+    </div>
+    
     <div className="focus">
       {/* Left Column: Question Log */}
       <div className="focus-left-column">
@@ -315,8 +362,16 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
                   onClick={() => setIdx(currentProjectQuestions.findIndex(x => x.id === aq.id))}
                 >
                   <div className="question">{aq.prompt}</div>
-                  <div className="answer">{aq.answer}</div>
-                  <div className="question-status">{aq.status === 'skipped' ? '⏭️ Skipped' : '✅ Answered'}</div>
+                  <div className="answer">
+                    {aq.draftStatus === 'CarriedForward' && '[u] '}{aq.answer}
+                  </div>
+                  <div className="question-status" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    {aq.status === 'skipped' ? (
+                      <><SkipForward size={14} /> Skipped</>
+                    ) : (
+                      <><CheckCircle size={14} /> Answered</>
+                    )}
+                  </div>
                 </div>
               ))}
             </>
@@ -335,8 +390,9 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
                   className="notion-indicator"
                   onClick={openNotionLink}
                   title={`Open in Notion (${window.electronAPI?.platform.isMacOS ? 'Cmd' : 'Ctrl'}+N)`}
+                  style={{ display: 'inline-flex', alignItems: 'center' }}
                 >
-                  📝
+                  <FileText size={20} />
                 </span>
               )}
             </div>
@@ -351,7 +407,9 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
         {lastWeekAnswer && (
           <div className="last-week-section">
             <div className="last-week-label">LAST WEEK</div>
-            <div className="last-week-answer">{lastWeekAnswer}</div>
+            <div className="last-week-answer">
+              {lastWeekStatus === 'CarriedForward' && '[u] '}{lastWeekAnswer}
+            </div>
             <div className="last-week-edit-hint">(CLICK OR ENTER TO EDIT)</div>
           </div>
         )}
@@ -413,22 +471,6 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
           </div>
         )}
         </div>
-
-        {/* Footer with action buttons */}
-        <div className="focus-footer">
-          <button 
-            className="action-button skip"
-            onClick={() => skipAndNext(projectIndex)}
-          >
-            Skip
-          </button>
-          <button 
-            className="action-button mark-reviewed"
-            onClick={() => markReviewedAndNext(project, projectIndex)}
-          >
-            Mark Reviewed
-          </button>
-        </div>
         
         <KeyboardShortcuts />
       </div>
@@ -450,8 +492,9 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
               <button 
                 className="refresh-tasks-btn"
                 onClick={loadProjectTasks}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
               >
-                🔄 Refresh Tasks
+                <RefreshCw size={16} /> Refresh Tasks
               </button>
             </div>
           ) : (
@@ -466,5 +509,81 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
         </div>
       </div>
     </div>
+    
+    {/* Confirmation Overlay */}
+    {showConfirmation && (
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(0, 0, 0, 0.5)',
+        backdropFilter: 'blur(10px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 10000,
+        animation: 'fadeIn 0.3s ease-out'
+      }}>
+        <div style={{
+          background: 'rgba(255, 255, 255, 0.15)',
+          backdropFilter: 'blur(30px)',
+          border: '2px solid rgba(255, 255, 255, 0.3)',
+          borderRadius: '24px',
+          padding: '48px 64px',
+          textAlign: 'center',
+          fontSize: '2em',
+          fontWeight: '700',
+          color: 'white',
+          boxShadow: '0 16px 64px rgba(0, 0, 0, 0.3)',
+          animation: 'scaleIn 0.3s ease-out'
+        }}>
+          ✓ Project Reviewed
+        </div>
+      </div>
+    )}
+    
+    {/* Footer with action buttons - 2-row layout */}
+    <div className="focus-footer-two-row">
+      {/* Row 1: Primary Actions */}
+      <div className="button-row primary-row">
+        <button 
+          className="action-button mark-reviewed"
+          onClick={handleMarkReviewed}
+        >
+          Mark Reviewed
+        </button>
+        <button 
+          className="action-button skip"
+          onClick={() => skipAndNext(projectIndex)}
+        >
+          Skip
+        </button>
+      </div>
+      
+      {/* Row 2: Project Management Actions */}
+      <div className="button-row management-row">
+        <button 
+          className="action-button complete-project"
+          onClick={() => markCompleteAndNext(project, projectIndex)}
+        >
+          Complete Project
+        </button>
+        <button 
+          className="action-button archive"
+          onClick={() => archiveAndNext(project, projectIndex)}
+        >
+          Archive
+        </button>
+        <button 
+          className="action-button someday-maybe"
+          onClick={() => somedayMaybeAndNext(project, projectIndex)}
+        >
+          Someday/Maybe
+        </button>
+      </div>
+    </div>
+    </>
   )
 }

@@ -161,6 +161,9 @@ type State = {
   setDraft: (d: AnswerDraft) => Promise<void>
   markReviewedAndNext: (project: ProjectDTO, idx: number) => Promise<void>
   skipAndNext: (idx: number) => void
+  markCompleteAndNext: (project: ProjectDTO, idx: number) => Promise<void>
+  archiveAndNext: (project: ProjectDTO, idx: number) => Promise<void>
+  somedayMaybeAndNext: (project: ProjectDTO, idx: number) => Promise<void>
   gotoSummary: () => void
   loadProjectQuestions: (project: ProjectDTO) => Promise<void>
 }
@@ -224,11 +227,15 @@ export const useApp = create<State>((set, get) => ({
       ? Math.round((Date.now() - get().projectStartTime!) / 1000)
       : 0
     
-    // Mark project as reviewed in OmniFocus
-    await Projects.markReviewed(project.id, new Date().toISOString())
+    // Queue OmniFocus update in background (non-blocking)
+    Projects.markReviewed(project.id, new Date().toISOString()).catch(error => {
+      console.error('❌ Mark reviewed failed:', error)
+    })
     
-    // Update session statistics
-    await Sessions.incrementProjectsReviewed(get().sessionID, timeSpentSec)
+    // Update session statistics in background (non-blocking)
+    Sessions.incrementProjectsReviewed(get().sessionID, timeSpentSec).catch(error => {
+      console.error('❌ Update session stats failed:', error)
+    })
     
     // Trigger Notion sync asynchronously (non-blocking)
     // If it fails, it will be queued for retry
@@ -237,7 +244,7 @@ export const useApp = create<State>((set, get) => ({
       console.error('❌ Notion sync failed (queued for retry):', error)
     })
     
-    // Continue to next project without waiting for sync
+    // Continue to next project immediately without waiting
     const next = idx + 1
     if (next < get().queue.length) {
       const nextProject = get().queue[next]
@@ -269,6 +276,180 @@ export const useApp = create<State>((set, get) => ({
         route: { name:'focus', idx: next },
         currentProjectQuestions: questions,
         projectStartTime: Date.now() // Reset timer for next project
+      })
+    } else {
+      set({ route: { name:'summary' } })
+    }
+  },
+
+  markCompleteAndNext: async (project, idx) => {
+    // Calculate time spent on this project
+    const timeSpentSec = get().projectStartTime 
+      ? Math.round((Date.now() - get().projectStartTime!) / 1000)
+      : 0
+    
+    // Mark project as reviewed AND complete in OmniFocus (background)
+    if (window.electronAPI?.omnifocus) {
+      window.electronAPI.omnifocus.markProjectReviewed(project.id).catch(error => {
+        console.error('❌ Mark reviewed failed:', error)
+      })
+      window.electronAPI.omnifocus.markProjectComplete(project.id).catch(error => {
+        console.error('❌ Mark complete failed:', error)
+      })
+    }
+    
+    // Update local database
+    Projects.markReviewed(project.id, new Date().toISOString()).catch(error => {
+      console.error('❌ Local mark reviewed failed:', error)
+    })
+    
+    // Update session statistics (count as reviewed)
+    Sessions.incrementProjectsReviewed(get().sessionID, timeSpentSec).catch(error => {
+      console.error('❌ Update session stats failed:', error)
+    })
+    
+    // Continue to next project immediately
+    const next = idx + 1
+    if (next < get().queue.length) {
+      const nextProject = get().queue[next]
+      const questions = await generateContextAwareQuestions(nextProject)
+      set({ 
+        route: { name:'focus', idx: next },
+        currentProjectQuestions: questions,
+        projectStartTime: Date.now()
+      })
+    } else {
+      set({ route: { name:'summary' } })
+    }
+  },
+
+  archiveAndNext: async (project, idx) => {
+    // Calculate time spent on this project
+    const timeSpentSec = get().projectStartTime 
+      ? Math.round((Date.now() - get().projectStartTime!) / 1000)
+      : 0
+    
+    // Mark project as reviewed AND complete in OmniFocus (background)
+    if (window.electronAPI?.omnifocus) {
+      window.electronAPI.omnifocus.markProjectReviewed(project.id).catch(error => {
+        console.error('❌ Mark reviewed failed:', error)
+      })
+      window.electronAPI.omnifocus.markProjectComplete(project.id).catch(error => {
+        console.error('❌ Mark complete failed:', error)
+      })
+    }
+    
+    // Move Notion page to Archive database (background)
+    if (window.electronAPI?.notion) {
+      const notionApi = window.electronAPI.notion
+      // Get archive database ID from main process
+      notionApi.isConfigured().then(config => {
+        if (config.archiveDb) {
+          // Now move to archive
+          notionApi.moveToDatabase(project.id, config.archiveDb, {
+            ofId: project.id,
+            name: project.name,
+            status: 'done status'
+          }).catch(error => {
+            console.error('❌ Archive to Notion failed:', error)
+          })
+        } else {
+          console.log('⏭️ Notion archive not configured, skipping')
+        }
+      }).catch(error => {
+        console.error('❌ Get Notion config failed:', error)
+      })
+    }
+    
+    // Update local database
+    Projects.markReviewed(project.id, new Date().toISOString()).catch(error => {
+      console.error('❌ Local mark reviewed failed:', error)
+    })
+    
+    // Update session statistics
+    Sessions.incrementProjectsReviewed(get().sessionID, timeSpentSec).catch(error => {
+      console.error('❌ Update session stats failed:', error)
+    })
+    
+    // Continue to next project immediately
+    const next = idx + 1
+    if (next < get().queue.length) {
+      const nextProject = get().queue[next]
+      const questions = await generateContextAwareQuestions(nextProject)
+      set({ 
+        route: { name:'focus', idx: next },
+        currentProjectQuestions: questions,
+        projectStartTime: Date.now()
+      })
+    } else {
+      set({ route: { name:'summary' } })
+    }
+  },
+
+  somedayMaybeAndNext: async (project, idx) => {
+    console.log(`🔄 somedayMaybeAndNext called for project: ${project.name} (${project.id})`)
+    
+    // Calculate time spent on this project
+    const timeSpentSec = get().projectStartTime 
+      ? Math.round((Date.now() - get().projectStartTime!) / 1000)
+      : 0
+    
+    // Drop project in OmniFocus (background)
+    if (window.electronAPI?.omnifocus) {
+      console.log('🔄 Dropping project in OmniFocus...')
+      window.electronAPI.omnifocus.dropProject(project.id).then(result => {
+        console.log('✅ Drop project result:', result)
+      }).catch(error => {
+        console.error('❌ Drop project failed:', error)
+      })
+    } else {
+      console.log('⚠️ No OmniFocus API available')
+    }
+    
+    // Move Notion page to Someday/Maybe database (background)
+    if (window.electronAPI?.notion) {
+      console.log('🔄 Checking Notion configuration...')
+      const notionApi = window.electronAPI.notion
+      // Get someday database ID from main process
+      notionApi.isConfigured().then(config => {
+        console.log('✅ Notion config received:', config)
+        if (config.somedayDb) {
+          console.log(`🔄 Moving to Someday/Maybe database: ${config.somedayDb}`)
+          // Now move to someday/maybe
+          notionApi.moveToDatabase(project.id, config.somedayDb, {
+            ofId: project.id,
+            name: project.name,
+            status: 'dropped status'
+          }).then(result => {
+            console.log('✅ Move to Someday/Maybe result:', result)
+          }).catch(error => {
+            console.error('❌ Move to Someday/Maybe failed:', error)
+          })
+        } else {
+          console.log('⏭️ Notion someday/maybe not configured, skipping')
+          console.log('   config.somedayDb =', config.somedayDb)
+        }
+      }).catch(error => {
+        console.error('❌ Get Notion config failed:', error)
+      })
+    } else {
+      console.log('⚠️ No Notion API available')
+    }
+    
+    // Update session statistics (count as skipped)
+    Sessions.incrementProjectsSkipped(get().sessionID, timeSpentSec).catch(error => {
+      console.error('❌ Update session stats failed:', error)
+    })
+    
+    // Continue to next project immediately
+    const next = idx + 1
+    if (next < get().queue.length) {
+      const nextProject = get().queue[next]
+      const questions = await generateContextAwareQuestions(nextProject)
+      set({ 
+        route: { name:'focus', idx: next },
+        currentProjectQuestions: questions,
+        projectStartTime: Date.now()
       })
     } else {
       set({ route: { name:'summary' } })

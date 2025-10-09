@@ -128,8 +128,19 @@ export async function loadReviewQuestions(): Promise<QuestionSet> {
   try {
     // Try to load from file system (Electron and web builds)
     // File should be in public/ directory, which gets copied to build root
-    const response = await fetch('/review-questions.md')
+    // Use relative path for Electron compatibility (loadFile uses file:// protocol)
+    const response = await fetch('./review-questions.md')
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+    }
+    
     const markdown = await response.text()
+    
+    if (!markdown || markdown.trim().length === 0) {
+      throw new Error('Loaded markdown file is empty')
+    }
+    
     cachedQuestions = parseQuestionsFromMarkdown(markdown)
     console.log('✅ Loaded questions from markdown file')
     return cachedQuestions

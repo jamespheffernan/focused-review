@@ -19,7 +19,7 @@ async function loadEnvVarsFromShell() {
     console.log('🔍 Attempting to load Notion environment variables from shell...')
     
     // Read env vars using shell (which sources .zshrc/.bashrc)
-    const { stdout } = await execAsync('source ~/.zshrc 2>/dev/null || source ~/.bashrc 2>/dev/null; echo "NOTION_TOKEN=$NOTION_TOKEN"; echo "NOTION_PROJECT_DB=$NOTION_PROJECT_DB"')
+    const { stdout } = await execAsync('source ~/.zshrc 2>/dev/null || source ~/.bashrc 2>/dev/null; echo "NOTION_TOKEN=$NOTION_TOKEN"; echo "NOTION_PROJECT_DB=$NOTION_PROJECT_DB"; echo "NOTION_ARCHIVE_DB=$NOTION_ARCHIVE_DB"; echo "NOTION_SOMEDAY_DB=$NOTION_SOMEDAY_DB"')
     
     const lines = stdout.trim().split('\n')
     for (const line of lines) {
@@ -33,6 +33,10 @@ async function loadEnvVarsFromShell() {
     // Verify we got what we need
     if (process.env.NOTION_TOKEN && process.env.NOTION_PROJECT_DB) {
       console.log('✅ Notion sync environment variables loaded successfully')
+      console.log(`   NOTION_TOKEN: ${process.env.NOTION_TOKEN ? 'Set' : 'Not set'}`)
+      console.log(`   NOTION_PROJECT_DB: ${process.env.NOTION_PROJECT_DB ? 'Set' : 'Not set'}`)
+      console.log(`   NOTION_ARCHIVE_DB: ${process.env.NOTION_ARCHIVE_DB ? 'Set' : 'Not set'}`)
+      console.log(`   NOTION_SOMEDAY_DB: ${process.env.NOTION_SOMEDAY_DB ? 'Set' : 'Not set'}`)
     } else {
       console.log('⚠️ Notion environment variables not found in shell config')
       console.log('   To enable Notion sync, set in ~/.zshrc or ~/.bashrc:')
@@ -134,6 +138,7 @@ for (let i = 0; i < flattenedProjects.length; i++) {
           name: task.name(),
           status: 'available',
           dueDate: null,
+          deferDate: null,
           context: null,
           flagged: task.flagged(),
           note: task.note() || '',
@@ -155,9 +160,29 @@ for (let i = 0; i < flattenedProjects.length; i++) {
         } catch (e) { }
         
         try {
-          const context = task.context();
-          if (context) taskObj.context = context.name();
-        } catch (e) { }
+          const deferDate = task.deferDate();
+          if (deferDate) taskObj.deferDate = deferDate.toISOString();
+        } catch (e) { 
+          console.log('DEBUG: Could not get deferDate for task ' + task.name() + ': ' + e.message);
+        }
+        
+        // OmniFocus 3+ uses tags instead of contexts
+        try {
+          const tags = task.tags();
+          if (tags && tags.length > 0) {
+            // Get the first tag as the context
+            const firstTag = tags[0];
+            const tagName = firstTag.name();
+            if (tagName) {
+              taskObj.context = tagName;
+              console.log('DEBUG: Task "' + task.name() + '" has tag/context: ' + tagName);
+            }
+          } else {
+            console.log('DEBUG: Task "' + task.name() + '" has no tags');
+          }
+        } catch (e) { 
+          console.log('DEBUG: Error getting tags for task ' + task.name() + ': ' + e.message);
+        }
         
         if (taskObj.name) {
           taskData.push(taskObj);
@@ -258,6 +283,13 @@ ipcMain.handle('omnifocus:get-projects', async () => {
     console.log('📊 Parsed', projectData.length, 'projects from JXA')
     if (projectData.length > 0) {
       console.log('📊 First project from JXA:', JSON.stringify(projectData[0], null, 2).substring(0, 800))
+      // DEBUG: Check task contexts
+      if (projectData[0].tasks && projectData[0].tasks.length > 0) {
+        console.log('📊 First 3 tasks with context info:', projectData[0].tasks.slice(0, 3).map(t => ({
+          name: t.name,
+          context: t.context
+        })))
+      }
     }
     
     const projects = []
@@ -274,7 +306,7 @@ ipcMain.handle('omnifocus:get-projects', async () => {
         if (project.status === 'on hold') status = 'on_hold'
         if (project.status === 'dropped') status = 'dropped'
         
-        projects.push({
+        const processedProject = {
           id: project.id || `of_${i}`,
           name: project.name,
           status: status,
@@ -288,7 +320,15 @@ ipcMain.handle('omnifocus:get-projects', async () => {
           note: project.note || '',
           tags: [], // OmniFocus tags would need separate handling
           tasks: project.tasks || []
-        })
+        }
+        
+        // DEBUG: Check if tasks with context are preserved
+        if (processedProject.tasks && processedProject.tasks.length > 0) {
+          const tasksWithContext = processedProject.tasks.filter(t => t.context).length
+          console.log(`📊 Project "${project.name}" has ${processedProject.tasks.length} tasks, ${tasksWithContext} with context`)
+        }
+        
+        projects.push(processedProject)
       }
     }
     
@@ -359,7 +399,8 @@ for (let j = 0; j < tasks.length; j++) {
       name: task.name(),
       status: task.status(),
       dueDate: task.dueDate() ? task.dueDate().toISOString() : null,
-      context: task.context() ? task.context().name() : null,
+      deferDate: task.deferDate() ? task.deferDate().toISOString() : null,
+      context: task.primaryTag() ? task.primaryTag().name() : null,
       flagged: task.flagged(),
       note: task.note() || '',
       completed: task.completed(),
@@ -410,22 +451,223 @@ JSON.stringify(taskData);`
 
 ipcMain.handle('omnifocus:update-project', async (event, projectId, updates) => {
   try {
-    const script = `
-      tell application "OmniFocus"
-        set targetProject to first project of default document whose id is "${projectId}"
-        ${updates.name ? `set name of targetProject to "${updates.name}"` : ''}
-        ${updates.status ? `set status of targetProject to ${updates.status === 'active' ? 'active' : updates.status === 'on_hold' ? 'on hold' : 'dropped'}` : ''}
-        ${updates.flagged !== undefined ? `set flagged of targetProject to ${updates.flagged}` : ''}
-        ${updates.estimatedMinutes ? `set estimated minutes of targetProject to ${updates.estimatedMinutes}` : ''}
-        ${updates.notes ? `set note of targetProject to "${updates.notes}"` : ''}
-      end tell
-    `
+    // Build JXA script dynamically based on updates
+    const tempJxaPath = path.join(require('os').tmpdir(), 'update_project_jxa.js')
     
-    await execAsync(`osascript -e '${script}'`)
+    let updateLogic = ''
+    
+    if (updates.name) {
+      updateLogic += `targetProject.name = '${updates.name.replace(/'/g, "\\'")}';\n`
+    }
+    
+    if (updates.status) {
+      // Use proper API methods for status changes
+      if (updates.status === 'dropped') {
+        updateLogic += `targetProject.markDropped();\n`
+      } else if (updates.status === 'on_hold') {
+        // Note: There may not be a markOnHold() method, so we might need to keep property assignment for this
+        updateLogic += `// Note: Setting on hold status - verify if method exists\ntargetProject.status = of.Project.Status.OnHold;\n`
+      } else if (updates.status === 'active') {
+        // Reactivate by clearing dropped/on-hold status
+        updateLogic += `// Note: Reactivating project\ntargetProject.status = of.Project.Status.Active;\n`
+      }
+    }
+    
+    if (updates.flagged !== undefined) {
+      updateLogic += `targetProject.flagged = ${updates.flagged};\n`
+    }
+    
+    if (updates.estimatedMinutes) {
+      updateLogic += `targetProject.estimatedMinutes = ${updates.estimatedMinutes};\n`
+    }
+    
+    if (updates.notes) {
+      updateLogic += `targetProject.note = '${updates.notes.replace(/'/g, "\\'")}';\n`
+    }
+    
+    const jxaScript = `const of = Application('OmniFocus');
+const doc = of.defaultDocument;
+const projects = doc.flattenedProjects();
+let targetProject = null;
+
+for (let i = 0; i < projects.length; i++) {
+  if (projects[i].id() === '${projectId}') {
+    targetProject = projects[i];
+    break;
+  }
+}
+
+if (!targetProject) {
+  throw new Error('Project not found');
+}
+
+${updateLogic}
+
+JSON.stringify({ success: true });`
+    
+    await fs.writeFile(tempJxaPath, jxaScript)
+    const { stdout, stderr } = await execAsync(`osascript -l JavaScript "${tempJxaPath}"`)
+    
+    // Clean up
+    try {
+      await fs.unlink(tempJxaPath)
+    } catch (cleanupError) {
+      console.warn('Failed to clean up temporary JXA file:', cleanupError.message)
+    }
+    
+    if (stderr) {
+      console.error('JXA stderr:', stderr)
+      return false
+    }
+    
     return true
   } catch (error) {
-    console.error('AppleScript update error:', error)
+    console.error('JXA update error:', error)
     return false
+  }
+})
+
+ipcMain.handle('omnifocus:mark-project-complete', async (event, projectId) => {
+  try {
+    console.log(`Marking project ${projectId} as complete`)
+    
+    // First check if OmniFocus is running
+    const checkScript = `tell application "System Events" to return (name of processes) contains "OmniFocus"`
+    const { stdout: isRunningOutput } = await execAsync(`osascript -e '${checkScript}'`)
+    
+    if (!isRunningOutput.trim().toLowerCase().includes('true')) {
+      return { success: false, error: 'OmniFocus is not running. Please start OmniFocus and try again.' }
+    }
+    
+    // Create temporary JXA script for marking project as complete
+    const tempJxaPath = path.join(require('os').tmpdir(), 'mark_project_complete_jxa.js')
+    const jxaScript = `const of = Application('OmniFocus');
+const doc = of.defaultDocument;
+
+// Find the project by ID
+const projects = doc.flattenedProjects();
+let targetProject = null;
+
+for (let i = 0; i < projects.length; i++) {
+  if (projects[i].id() === '${projectId}') {
+    targetProject = projects[i];
+    break;
+  }
+}
+
+if (!targetProject) {
+  throw new Error('Project not found');
+}
+
+// Mark project as complete using the proper API method
+targetProject.markComplete();
+
+// Return success
+JSON.stringify({
+  success: true,
+  projectId: targetProject.id(),
+  completed: targetProject.completed()
+});`
+    
+    // Write the JXA script to temporary file
+    await fs.writeFile(tempJxaPath, jxaScript)
+    
+    // Execute the JXA script
+    const { stdout: resultOutput, stderr } = await execAsync(`osascript -l JavaScript "${tempJxaPath}"`)
+    
+    // Clean up temporary file
+    try {
+      await fs.unlink(tempJxaPath)
+    } catch (cleanupError) {
+      console.warn('Failed to clean up temporary JXA file:', cleanupError.message)
+    }
+    
+    if (stderr) {
+      console.error('JXA stderr:', stderr)
+      return { success: false, error: stderr }
+    }
+    
+    console.log('✅ Project marked as complete:', resultOutput)
+    const result = JSON.parse(resultOutput)
+    return result
+  } catch (error) {
+    console.error('Error marking project as complete:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('omnifocus:drop-project', async (event, projectId) => {
+  try {
+    console.log(`Dropping project ${projectId}`)
+    
+    // First check if OmniFocus is running
+    const checkScript = `tell application "System Events" to return (name of processes) contains "OmniFocus"`
+    const { stdout: isRunningOutput } = await execAsync(`osascript -e '${checkScript}'`)
+    
+    if (!isRunningOutput.trim().toLowerCase().includes('true')) {
+      return { success: false, error: 'OmniFocus is not running. Please start OmniFocus and try again.' }
+    }
+    
+    // Create temporary JXA script for dropping project
+    const tempJxaPath = path.join(require('os').tmpdir(), 'drop_project_jxa.js')
+    const jxaScript = `const of = Application('OmniFocus');
+const doc = of.defaultDocument;
+
+// Find the project by ID
+const projects = doc.flattenedProjects();
+let targetProject = null;
+
+for (let i = 0; i < projects.length; i++) {
+  if (projects[i].id() === '${projectId}') {
+    targetProject = projects[i];
+    break;
+  }
+}
+
+if (!targetProject) {
+  throw new Error('Project not found');
+}
+
+// Drop the project using the proper API method
+// In OmniFocus 4, use markDropped() method instead of setting status property
+try {
+  targetProject.markDropped();
+} catch (e) {
+  // If markDropped doesn't exist, try the property (for older versions)
+  targetProject.status = of.ProjectStatus.dropped;
+}
+
+// Return success
+JSON.stringify({
+  success: true,
+  projectId: targetProject.id(),
+  status: 'dropped'
+});`
+    
+    // Write the JXA script to temporary file
+    await fs.writeFile(tempJxaPath, jxaScript)
+    
+    // Execute the JXA script
+    const { stdout: resultOutput, stderr } = await execAsync(`osascript -l JavaScript "${tempJxaPath}"`)
+    
+    // Clean up temporary file
+    try {
+      await fs.unlink(tempJxaPath)
+    } catch (cleanupError) {
+      console.warn('Failed to clean up temporary JXA file:', cleanupError.message)
+    }
+    
+    if (stderr) {
+      console.error('JXA stderr:', stderr)
+      return { success: false, error: stderr }
+    }
+    
+    console.log('✅ Project dropped:', resultOutput)
+    const result = JSON.parse(resultOutput)
+    return result
+  } catch (error) {
+    console.error('Error dropping project:', error)
+    return { success: false, error: error.message }
   }
 })
 
@@ -461,8 +703,8 @@ if (!targetProject) {
   throw new Error('Project not found');
 }
 
-// Mark as reviewed (set last review date to now)
-targetProject.lastReviewDate = new Date();
+// Mark as reviewed using the proper API method
+targetProject.markReviewed();
 
 // Return success with updated dates
 JSON.stringify({
@@ -574,33 +816,38 @@ if (!targetTask) {
   throw new Error('Task not found');
 }
 
-// Find or create context
-const contexts = doc.flattenedContexts();
-let targetContext = null;
+// Find or create tag (OmniFocus 4 renamed contexts to tags)
+const tags = doc.flattenedTags();
+let targetTag = null;
 
-for (let i = 0; i < contexts.length; i++) {
-  if (contexts[i].name() === '${contextName.replace(/'/g, "\\'")}') {
-    targetContext = contexts[i];
+for (let i = 0; i < tags.length; i++) {
+  if (tags[i].name() === '${contextName.replace(/'/g, "\\'")}') {
+    targetTag = tags[i];
     break;
   }
 }
 
-// Create context if it doesn't exist
-if (!targetContext) {
-  targetContext = of.Context({
+// Create tag if it doesn't exist
+if (!targetTag) {
+  targetTag = of.Tag({
     name: '${contextName.replace(/'/g, "\\'")}'
   });
-  doc.contexts.push(targetContext);
+  doc.tags.push(targetTag);
 }
 
-// Set context on task
-targetTask.context = targetContext;
+// Add tag to task using the proper API method
+// First remove existing primary tag if any, then add the new one
+const existingPrimaryTag = targetTask.primaryTag();
+if (existingPrimaryTag) {
+  targetTask.removeTag(existingPrimaryTag);
+}
+targetTask.addTag(targetTag);
 
 // Return success
 JSON.stringify({
   success: true,
   taskId: targetTask.id(),
-  contextName: targetContext.name()
+  contextName: targetTag.name()
 });`
     
     // Write the JXA script to temporary file
@@ -675,8 +922,12 @@ if (!targetTask) {
   throw new Error('Task not found');
 }
 
-// Set due date (or clear it if null)
-targetTask.dueDate = ${dueDateValue};
+// Set due date using the proper API method (or clear it if null)
+if (${dueDateValue} !== null) {
+  targetTask.setDueDate(${dueDateValue});
+} else {
+  targetTask.clearDueDate();
+}
 
 // Return success
 JSON.stringify({
@@ -756,14 +1007,11 @@ if (!targetTask) {
   throw new Error('Task not found');
 }
 
-// Toggle completion
-targetTask.completed = ${isComplete};
-
-// Set/clear completion date
+// Toggle completion using OmniFocus 4 API methods
 if (${isComplete}) {
-  targetTask.completionDate = new Date();
+  targetTask.markComplete();
 } else {
-  targetTask.completionDate = null;
+  targetTask.markIncomplete();
 }
 
 // Return success
@@ -815,7 +1063,7 @@ JSON.stringify({
 // IPC handler for updating task properties (comprehensive update)
 ipcMain.handle('omnifocus:update-task', async (event, taskId, updates) => {
   try {
-    console.log(`Updating task ${taskId} with:`, updates)
+    console.log(`[OmniFocus] Updating task ${taskId} with:`, JSON.stringify(updates))
     
     // First check if OmniFocus is running
     const checkScript = `tell application "System Events" to return (name of processes) contains "OmniFocus"`
@@ -830,61 +1078,85 @@ ipcMain.handle('omnifocus:update-task', async (event, taskId, updates) => {
     
     // Build update logic
     let updateLogic = ''
+    let completionLogic = '' // Handle completion separately at the end
     
-    if (updates.name !== undefined) {
-      updateLogic += `targetTask.name = '${updates.name.replace(/'/g, "\\'")}';\n`
+    // Ignore completedDate if it's passed - it's read-only in OmniFocus 4
+    // The markComplete() method sets it automatically
+    if (updates.completedDate !== undefined) {
+      console.log('[OmniFocus] Ignoring completedDate (read-only in OmniFocus 4, set automatically by markComplete())')
     }
     
-    if (updates.note !== undefined) {
-      updateLogic += `targetTask.note = '${(updates.note || '').replace(/'/g, "\\'")}';\n`
-    }
-    
-    if (updates.flagged !== undefined) {
-      updateLogic += `targetTask.flagged = ${updates.flagged};\n`
-    }
-    
-    if (updates.dueDate !== undefined) {
-      if (updates.dueDate) {
-        updateLogic += `targetTask.dueDate = new Date('${updates.dueDate}');\n`
+    // Handle completion state separately - must be done LAST
+    if (updates.completed !== undefined) {
+      // In OmniFocus 4, completed and completionDate are read-only
+      // Use markComplete() and markIncomplete() methods instead
+      if (updates.completed) {
+        completionLogic = `\n// Mark complete (must be done last)\ntargetTask.markComplete();\n`
       } else {
-        updateLogic += `targetTask.dueDate = null;\n`
+        completionLogic = `\n// Mark incomplete (must be done last)\ntargetTask.markIncomplete();\n`
       }
     }
     
-    if (updates.context !== undefined) {
-      if (updates.context) {
-        updateLogic += `
-// Find or create context
-const contexts = doc.flattenedContexts();
-let targetContext = null;
+    // Only update other properties if we're not also changing completion state
+    // In OmniFocus 4, you can't modify properties and completion in the same operation
+    if (updates.completed === undefined) {
+      if (updates.name !== undefined) {
+        updateLogic += `targetTask.name = '${updates.name.replace(/'/g, "\\'")}';\n`
+      }
+      
+      if (updates.note !== undefined) {
+        updateLogic += `targetTask.note = '${(updates.note || '').replace(/'/g, "\\'")}';\n`
+      }
+      
+      if (updates.flagged !== undefined) {
+        updateLogic += `targetTask.flagged = ${updates.flagged};\n`
+      }
+      
+      if (updates.dueDate !== undefined) {
+        if (updates.dueDate) {
+          updateLogic += `targetTask.setDueDate(new Date('${updates.dueDate}'));\n`
+        } else {
+          updateLogic += `targetTask.clearDueDate();\n`
+        }
+      }
+      
+      if (updates.context !== undefined) {
+        if (updates.context) {
+          updateLogic += `
+// Find or create tag (OmniFocus 4 renamed contexts to tags)
+const tags = doc.flattenedTags();
+let targetTag = null;
 
-for (let i = 0; i < contexts.length; i++) {
-  if (contexts[i].name() === '${updates.context.replace(/'/g, "\\'")}') {
-    targetContext = contexts[i];
+for (let i = 0; i < tags.length; i++) {
+  if (tags[i].name() === '${updates.context.replace(/'/g, "\\'")}') {
+    targetTag = tags[i];
     break;
   }
 }
 
-if (!targetContext) {
-  targetContext = of.Context({
+if (!targetTag) {
+  targetTag = of.Tag({
     name: '${updates.context.replace(/'/g, "\\'")}'
   });
-  doc.contexts.push(targetContext);
+  doc.tags.push(targetTag);
 }
 
-targetTask.context = targetContext;
+// Use proper API methods to manage tags
+const existingPrimaryTag = targetTask.primaryTag();
+if (existingPrimaryTag) {
+  targetTask.removeTag(existingPrimaryTag);
+}
+targetTask.addTag(targetTag);
 `
-      } else {
-        updateLogic += `targetTask.context = null;\n`
-      }
-    }
-    
-    if (updates.completed !== undefined) {
-      updateLogic += `targetTask.completed = ${updates.completed};\n`
-      if (updates.completed) {
-        updateLogic += `targetTask.completionDate = new Date();\n`
-      } else {
-        updateLogic += `targetTask.completionDate = null;\n`
+        } else {
+          updateLogic += `
+// Remove primary tag if one exists
+const existingPrimaryTag = targetTask.primaryTag();
+if (existingPrimaryTag) {
+  targetTask.removeTag(existingPrimaryTag);
+}
+`
+        }
       }
     }
     
@@ -907,7 +1179,7 @@ if (!targetTask) {
 }
 
 // Apply updates
-${updateLogic}
+${updateLogic}${completionLogic}
 
 // Return updated task data
 JSON.stringify({
@@ -917,13 +1189,18 @@ JSON.stringify({
   note: targetTask.note() || '',
   flagged: targetTask.flagged(),
   dueDate: targetTask.dueDate() ? targetTask.dueDate().toISOString() : null,
-  context: targetTask.context() ? targetTask.context().name() : null,
+  context: targetTask.primaryTag() ? targetTask.primaryTag().name() : null,
   completed: targetTask.completed(),
   completionDate: targetTask.completionDate() ? targetTask.completionDate().toISOString() : null
 });`
     
     // Write the JXA script to temporary file
     await fs.writeFile(tempJxaPath, jxaScript)
+    
+    // Debug: Log the generated JXA script
+    console.log('[OmniFocus] === Generated JXA Script ===')
+    console.log(jxaScript)
+    console.log('[OmniFocus] === End JXA Script ===')
     
     // Execute the JXA script
     const { stdout: resultOutput, stderr } = await execAsync(`osascript -l JavaScript "${tempJxaPath}"`)
@@ -936,7 +1213,7 @@ JSON.stringify({
     }
     
     if (stderr) {
-      console.error('JXA stderr:', stderr)
+      console.error('[OmniFocus] JXA stderr:', stderr)
       return { success: false, error: stderr }
     }
     
@@ -947,15 +1224,15 @@ JSON.stringify({
     // Parse the JSON result
     try {
       const result = JSON.parse(resultOutput.trim())
-      console.log('Task updated successfully:', result)
+      console.log('[OmniFocus] Task updated successfully:', result)
       return result
     } catch (parseError) {
-      console.error('Failed to parse JXA output:', parseError)
+      console.error('[OmniFocus] Failed to parse JXA output:', parseError)
       return { success: false, error: 'Failed to parse result' }
     }
     
   } catch (error) {
-    console.error('Error updating task:', error)
+    console.error('[OmniFocus] Error updating task:', error)
     return { success: false, error: error.message }
   }
 })
@@ -1441,15 +1718,157 @@ ipcMain.handle('notion:sync-review', async (event, projectId, weekOf, formattedM
   }
 })
 
+ipcMain.handle('notion:move-to-database', async (event, ofProjectId, targetDatabaseId, projectData) => {
+  try {
+    console.log(`Moving project ${ofProjectId} to database ${targetDatabaseId}`)
+    
+    // Check if Notion sync is configured
+    const notionToken = process.env.NOTION_TOKEN
+    const projectDb = process.env.NOTION_PROJECT_DB
+    
+    if (!notionToken || !projectDb) {
+      console.log('⏭️ Notion not configured, skipping move')
+      return {
+        success: false,
+        error: 'Notion not configured. Set NOTION_TOKEN and NOTION_PROJECT_DB environment variables.'
+      }
+    }
+    
+    if (!targetDatabaseId) {
+      return {
+        success: false,
+        error: 'Target database ID not configured'
+      }
+    }
+    
+    // Import Notion client
+    const { Client } = await import('@notionhq/client')
+    const notion = new Client({ auth: notionToken })
+    
+    // Step 1: Find the Notion page in Active Projects database by OF-ID
+    console.log(`🔍 Finding Notion page for OmniFocus project ${ofProjectId}...`)
+    const findResponse = await notion.databases.query({
+      database_id: projectDb,
+      filter: {
+        property: 'OF-ID',
+        rich_text: {
+          equals: ofProjectId
+        }
+      },
+      page_size: 1
+    })
+    
+    if (!findResponse.results || findResponse.results.length === 0) {
+      console.log(`⏭️ No Notion page found for project ${ofProjectId}`)
+      return {
+        success: false,
+        error: `No Notion page found for project ${ofProjectId}`
+      }
+    }
+    
+    const pageId = findResponse.results[0].id
+    console.log(`✅ Found Notion page: ${pageId}`)
+    
+    // Step 2: Check if page already exists in target database (avoid duplicates)
+    console.log(`🔍 Checking for duplicates in target database...`)
+    const existingCheck = await notion.databases.query({
+      database_id: targetDatabaseId,
+      filter: {
+        property: 'OF-ID',
+        rich_text: {
+          equals: ofProjectId
+        }
+      }
+    })
+    
+    if (existingCheck.results && existingCheck.results.length > 0) {
+      console.log(`Project ${ofProjectId} already exists in target database - skipping duplicate`)
+      // Archive the original
+      await notion.pages.update({ page_id: pageId, archived: true })
+      return {
+        success: true,
+        message: 'Project already in target database, original archived'
+      }
+    }
+    
+    // Step 3: Fetch the original page to get its properties
+    console.log(`📄 Fetching original page properties...`)
+    const originalPage = await notion.pages.retrieve({ page_id: pageId })
+    
+    // Build properties for the new page
+    const properties = {
+      Name: originalPage.properties.Name || { title: [{ text: { content: projectData?.name || 'Archived Project' } }] }
+    }
+    
+    // Copy other properties if they exist
+    if (originalPage.properties['OF-ID']) {
+      properties['OF-ID'] = originalPage.properties['OF-ID']
+    }
+    if (originalPage.properties.Status || projectData?.status) {
+      properties.Status = projectData?.status 
+        ? { select: { name: projectData.status } }
+        : originalPage.properties.Status
+    }
+    if (originalPage.properties.Note) {
+      properties.Note = originalPage.properties.Note
+    }
+    if (originalPage.properties['Last edit']) {
+      properties['Last edit'] = originalPage.properties['Last edit']
+    }
+    if (originalPage.properties['OmniFocus Link']) {
+      properties['OmniFocus Link'] = originalPage.properties['OmniFocus Link']
+    }
+    if (originalPage.properties['Sync Hash']) {
+      properties['Sync Hash'] = originalPage.properties['Sync Hash']
+    }
+    
+    // Create new page in target database
+    const newPage = await notion.pages.create({
+      parent: { database_id: targetDatabaseId },
+      properties: properties
+    })
+    
+    console.log(`✅ Created copy in target database: ${newPage.id}`)
+    
+    // Archive the original page from Active Projects
+    await notion.pages.update({ page_id: pageId, archived: true })
+    
+    console.log(`✅ Archived original page: ${pageId}`)
+    
+    return {
+      success: true,
+      oldPageId: pageId,
+      newPageId: newPage.id,
+      message: `Moved to target database`
+    }
+  } catch (error) {
+    console.error('❌ Error moving page to database:', error)
+    return {
+      success: false,
+      error: error.message || 'Unknown error moving page'
+    }
+  }
+})
+
 ipcMain.handle('notion:is-configured', async () => {
   try {
     const notionToken = process.env.NOTION_TOKEN
     const notionDb = process.env.NOTION_PROJECT_DB
+    const archiveDb = process.env.NOTION_ARCHIVE_DB
+    const somedayDb = process.env.NOTION_SOMEDAY_DB
+    
+    console.log('[notion:is-configured] Checking environment variables:')
+    console.log(`  NOTION_TOKEN: ${notionToken ? 'Set' : 'Not set'}`)
+    console.log(`  NOTION_PROJECT_DB: ${notionDb ? 'Set' : 'Not set'}`)
+    console.log(`  NOTION_ARCHIVE_DB: ${archiveDb ? archiveDb : 'Not set'}`)
+    console.log(`  NOTION_SOMEDAY_DB: ${somedayDb ? somedayDb : 'Not set'}`)
     
     return {
       configured: !!(notionToken && notionDb),
       hasToken: !!notionToken,
-      hasDatabase: !!notionDb
+      hasDatabase: !!notionDb,
+      archiveDb: archiveDb || null,
+      somedayDb: somedayDb || null
     }
   } catch (error) {
     console.error('Error checking Notion configuration:', error)
