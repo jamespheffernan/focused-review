@@ -1,9 +1,19 @@
 :root { 
   font-family: 'Electrolize', 'Arial', 'Helvetica', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
   color: white;
-  /* Default gradient - will be overridden by themeManager */
+  /* Default theme variables - will be overridden by themeManager */
   --gradient: linear-gradient(135deg, #00ff88 0%, #00d4aa 50%, #0099cc 100%);
   --accent: #00d4aa;
+  --primary: #00d4aa;
+  --primary-hover: #00e6bb;
+  --secondary: #0099cc;
+  --secondary-hover: #00aae6;
+  --success: #00ff88;
+  --success-hover: #33ff9f;
+  --warning: #ffc107;
+  --warning-hover: #ffcd38;
+  --danger: #ff6b6b;
+  --danger-hover: #ff8787;
   background: var(--gradient);
 }
 
@@ -78,7 +88,7 @@ body {
 }
 
 .primary { 
-  background: #ff6b9d; 
+  background: var(--primary); 
   color: white; 
   padding: 16px 32px; 
   border: 0; 
@@ -91,7 +101,7 @@ body {
 }
 
 .primary:hover {
-  background: #ff5a8a;
+  background: var(--primary-hover);
   transform: translateY(-2px);
 }
 
@@ -113,10 +123,6 @@ body {
   display: flex;
   justify-content: flex-end;
   padding: 16px 24px 0 24px;
-}
-
-.answered-questions {
-  /* No additional styles needed */
 }
 
 .answered-questions h3 {
@@ -356,8 +362,8 @@ body {
 }
 
 .mood-button.selected {
-  background: rgba(255, 107, 157, 0.4);
-  border-color: #ff6b9d;
+  background: color-mix(in srgb, var(--primary) 40%, transparent);
+  border-color: var(--primary);
   border-width: 3px;
   transform: scale(1.1);
 }
@@ -412,12 +418,12 @@ body {
 }
 
 .action-button.mark-reviewed {
-  background: #ff6b9d;
+  background: var(--primary);
   color: white;
 }
 
 .action-button.mark-reviewed:hover {
-  background: #ff5a8a;
+  background: var(--primary-hover);
   transform: translateY(-2px);
 }
 
@@ -480,7 +486,7 @@ input[type="range"]::-webkit-slider-thumb {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: #ff6b9d;
+  background: var(--primary);
   cursor: pointer;
 }
 
@@ -488,7 +494,7 @@ input[type="range"]::-moz-range-thumb {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: #ff6b9d;
+  background: var(--primary);
   cursor: pointer;
   border: none;
 }

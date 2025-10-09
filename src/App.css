@@ -226,7 +226,7 @@
 }
 
 .sync-error-message {
-  color: #ff6b6b;
+  color: var(--danger);
   font-size: 0.9em;
   font-weight: 500;
   flex: 1;
@@ -675,8 +675,8 @@
 }
 
 .due-date.overdue {
-  background: rgba(255, 68, 68, 0.2);
-  color: #ff6b6b;
+  background: color-mix(in srgb, var(--danger) 20%, transparent);
+  color: var(--danger);
   font-weight: 500;
 }
 
@@ -826,13 +826,13 @@
 }
 
 .save-btn {
-  background: rgba(76, 175, 80, 0.3);
+  background: color-mix(in srgb, var(--success) 30%, transparent);
   color: white;
-  border: 1px solid rgba(76, 175, 80, 0.5);
+  border: 1px solid color-mix(in srgb, var(--success) 50%, transparent);
 }
 
 .save-btn:hover {
-  background: rgba(76, 175, 80, 0.4);
+  background: color-mix(in srgb, var(--success) 40%, transparent);
   transform: translateY(-2px);
 }
 
@@ -902,7 +902,7 @@
   width: 40px;
   height: 40px;
   border: 3px solid rgba(255, 255, 255, 0.3);
-  border-top: 3px solid #4CAF50;
+  border-top: 3px solid var(--success);
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin: 0 auto 20px;
@@ -916,17 +916,23 @@
 .task-list-error {
   text-align: center;
   padding: 20px;
-  color: #ff6b6b;
+  color: var(--danger);
 }
 
 .retry-button {
-  background: #4CAF50;
+  background: var(--success);
   color: white;
   border: none;
   padding: 10px 20px;
   border-radius: 6px;
   cursor: pointer;
   margin-top: 10px;
+  transition: all 0.2s ease;
+}
+
+.retry-button:hover {
+  background: var(--success-hover);
+  transform: translateY(-1px);
 }
 
 .task-statistics {
@@ -957,10 +963,10 @@
   color: white;
 }
 
-.stat-value.next { color: #4CAF50; }
-.stat-value.available { color: #2196F3; }
-.stat-value.blocked { color: #FF9800; }
-.stat-value.completed { color: #9E9E9E; }
+.stat-value.next { color: var(--success); }
+.stat-value.available { color: var(--secondary); }
+.stat-value.blocked { color: var(--warning); }
+.stat-value.completed { color: rgba(255, 255, 255, 0.5); }
 
 .task-groups {
   display: flex;
@@ -1004,7 +1010,7 @@
 }
 
 .task-item.flagged {
-  border-left: 4px solid #ff6b6b;
+  border-left: 4px solid var(--danger);
 }
 
 .task-item.completed {
@@ -1046,7 +1052,7 @@
 }
 
 .task-name:hover {
-  color: #4CAF50;
+  color: var(--success);
 }
 
 .task-context {
@@ -1061,7 +1067,7 @@
 }
 
 .task-due-date.overdue {
-  color: #ff6b6b;
+  color: var(--danger);
   font-weight: 500;
 }
 
@@ -1086,7 +1092,7 @@
 }
 
 .flag-button.flagged {
-  color: #ff6b6b;
+  color: var(--danger);
 }
 
 .task-details {
@@ -1142,13 +1148,19 @@
 }
 
 .clear-filters-button {
-  background: #4CAF50;
+  background: var(--success);
   color: white;
   border: none;
   padding: 8px 16px;
   border-radius: 4px;
   cursor: pointer;
   margin-top: 10px;
+  transition: all 0.2s ease;
+}
+
+.clear-filters-button:hover {
+  background: var(--success-hover);
+  transform: translateY(-1px);
 }
 
 /* Task Filter Styles */
@@ -1183,7 +1195,7 @@
 }
 
 .filter-count {
-  background: #4CAF50;
+  background: var(--success);
   color: white;
   border-radius: 50%;
   width: 20px;
@@ -1196,13 +1208,19 @@
 }
 
 .clear-filters {
-  background: #ff6b6b;
+  background: var(--danger);
   color: white;
   border: none;
   padding: 5px 10px;
   border-radius: 4px;
   cursor: pointer;
   font-size: 0.9em;
+  transition: all 0.2s ease;
+}
+
+.clear-filters:hover {
+  background: var(--danger-hover);
+  transform: translateY(-1px);
 }
 
 .filter-options {
@@ -1276,7 +1294,7 @@
   background: rgba(255, 255, 255, 0.1);
   border-radius: 8px;
   padding: 20px;
-  border: 2px solid #4CAF50;
+  border: 2px solid var(--success);
   margin: 10px 0;
 }
 
@@ -1299,13 +1317,19 @@
 }
 
 .save-button {
-  background: #4CAF50;
+  background: var(--success);
   color: white;
   border: none;
   padding: 8px 16px;
   border-radius: 4px;
   cursor: pointer;
   font-size: 0.9em;
+  transition: all 0.2s ease;
+}
+
+.save-button:hover:not(:disabled) {
+  background: var(--success-hover);
+  transform: translateY(-1px);
 }
 
 .save-button:disabled {
@@ -1314,13 +1338,19 @@
 }
 
 .cancel-button {
-  background: #ff6b6b;
+  background: var(--danger);
   color: white;
   border: none;
   padding: 8px 16px;
   border-radius: 4px;
   cursor: pointer;
   font-size: 0.9em;
+  transition: all 0.2s ease;
+}
+
+.cancel-button:hover {
+  background: var(--danger-hover);
+  transform: translateY(-1px);
 }
 
 .editor-form {
@@ -1362,18 +1392,18 @@
 .form-group select:focus,
 .form-group textarea:focus {
   outline: none;
-  border-color: #4CAF50;
-  box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
+  border-color: var(--success);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--success) 20%, transparent);
 }
 
 .form-group input.error,
 .form-group select.error,
 .form-group textarea.error {
-  border-color: #ff6b6b;
+  border-color: var(--danger);
 }
 
 .error-message {
-  color: #ff6b6b;
+  color: var(--danger);
   font-size: 0.8em;
   margin-top: 2px;
 }
@@ -1492,7 +1522,7 @@
 }
 
 .import-tasks-button {
-  background: #4CAF50;
+  background: var(--success);
   color: white;
   border: none;
   padding: 10px 20px;
@@ -1501,11 +1531,12 @@
   font-size: 0.9em;
   font-family: 'Electrolize', sans-serif;
   margin-top: 15px;
-  transition: background-color 0.2s ease;
+  transition: all 0.2s ease;
 }
 
 .import-tasks-button:hover {
-  background: #45a049;
+  background: var(--success-hover);
+  transform: translateY(-1px);
 }
 
 /* Responsive adjustments for task integration */
@@ -1674,13 +1705,13 @@
 
 /* Primary Row Buttons */
 .action-button.mark-reviewed {
-  background: rgba(76, 175, 80, 0.3);
-  border-color: rgba(76, 175, 80, 0.5);
+  background: color-mix(in srgb, var(--success) 30%, transparent);
+  border-color: color-mix(in srgb, var(--success) 50%, transparent);
 }
 
 .action-button.mark-reviewed:hover {
-  background: rgba(76, 175, 80, 0.5);
-  border-color: rgba(76, 175, 80, 0.7);
+  background: color-mix(in srgb, var(--success) 50%, transparent);
+  border-color: color-mix(in srgb, var(--success) 70%, transparent);
 }
 
 .action-button.skip {
@@ -1695,23 +1726,23 @@
 
 /* Management Row Buttons */
 .action-button.complete-project {
-  background: rgba(33, 150, 243, 0.3);
-  border-color: rgba(33, 150, 243, 0.5);
+  background: color-mix(in srgb, var(--secondary) 30%, transparent);
+  border-color: color-mix(in srgb, var(--secondary) 50%, transparent);
 }
 
 .action-button.complete-project:hover {
-  background: rgba(33, 150, 243, 0.5);
-  border-color: rgba(33, 150, 243, 0.7);
+  background: color-mix(in srgb, var(--secondary) 50%, transparent);
+  border-color: color-mix(in srgb, var(--secondary) 70%, transparent);
 }
 
 .action-button.archive {
-  background: rgba(255, 193, 7, 0.3);
-  border-color: rgba(255, 193, 7, 0.5);
+  background: color-mix(in srgb, var(--warning) 30%, transparent);
+  border-color: color-mix(in srgb, var(--warning) 50%, transparent);
 }
 
 .action-button.archive:hover {
-  background: rgba(255, 193, 7, 0.5);
-  border-color: rgba(255, 193, 7, 0.7);
+  background: color-mix(in srgb, var(--warning) 50%, transparent);
+  border-color: color-mix(in srgb, var(--warning) 70%, transparent);
 }
 
 .action-button.someday-maybe {

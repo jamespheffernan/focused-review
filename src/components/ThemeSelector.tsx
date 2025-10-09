@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { THEMES, themeManager } from '../services/themeManager'
-import { Palette } from 'lucide-react'
+import { Palette, Check } from 'lucide-react'
 
 export default function ThemeSelector() {
   const [isOpen, setIsOpen] = useState(false)
@@ -50,7 +50,7 @@ export default function ThemeSelector() {
             onClick={() => setIsOpen(false)}
           />
           
-          {/* Dropdown */}
+          {/* Theme Grid Dropdown */}
           <div style={{
             position: 'absolute',
             top: 'calc(100% + 8px)',
@@ -59,8 +59,12 @@ export default function ThemeSelector() {
             backdropFilter: 'blur(30px)',
             border: '1px solid rgba(255, 255, 255, 0.3)',
             borderRadius: '12px',
-            padding: '12px',
-            minWidth: '240px',
+            padding: '16px',
+            paddingBottom: '24px',
+            width: '420px',
+            maxWidth: '90vw',
+            maxHeight: 'calc(100vh - 180px)',
+            overflowY: 'auto',
             boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
             zIndex: 1000,
             animation: 'fadeIn 0.2s ease-out'
@@ -68,55 +72,92 @@ export default function ThemeSelector() {
             <div style={{
               fontSize: '0.8em',
               opacity: 0.7,
-              marginBottom: '12px',
+              marginBottom: '16px',
               fontWeight: 600,
               textTransform: 'uppercase',
-              letterSpacing: '0.5px'
+              letterSpacing: '0.5px',
+              textAlign: 'center'
             }}>
               Choose Theme
             </div>
             
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {/* Grid layout - 3 columns */}
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(3, 1fr)', 
+              gap: '12px' 
+            }}>
               {Object.entries(THEMES).map(([key, theme]) => (
                 <button
                   key={key}
                   onClick={() => handleThemeChange(key)}
                   style={{
                     display: 'flex',
+                    flexDirection: 'column',
                     alignItems: 'center',
-                    gap: '12px',
-                    padding: '12px',
+                    gap: '8px',
+                    padding: '12px 8px',
                     background: currentTheme === key ? 'rgba(255, 255, 255, 0.15)' : 'transparent',
-                    border: currentTheme === key ? '2px solid rgba(255, 255, 255, 0.4)' : '2px solid transparent',
-                    borderRadius: '8px',
+                    border: currentTheme === key ? '2px solid rgba(255, 255, 255, 0.5)' : '2px solid rgba(255, 255, 255, 0.15)',
+                    borderRadius: '10px',
                     cursor: 'pointer',
                     transition: 'all 0.2s ease',
-                    textAlign: 'left',
-                    color: 'white'
+                    color: 'white',
+                    position: 'relative'
                   }}
                   onMouseEnter={(e) => {
                     if (currentTheme !== key) {
                       e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'
+                      e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)'
+                      e.currentTarget.style.transform = 'translateY(-2px)'
                     }
                   }}
                   onMouseLeave={(e) => {
                     if (currentTheme !== key) {
                       e.currentTarget.style.background = 'transparent'
+                      e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)'
+                      e.currentTarget.style.transform = 'translateY(0)'
                     }
                   }}
                 >
+                  {/* Gradient preview - larger and more prominent */}
                   <div style={{
-                    width: '32px',
-                    height: '32px',
+                    width: '100%',
+                    height: '50px',
                     borderRadius: '6px',
                     background: theme.gradient,
                     border: '1px solid rgba(255, 255, 255, 0.2)',
-                    flexShrink: 0
-                  }} />
-                  <span style={{ fontWeight: 500 }}>{theme.name}</span>
-                  {currentTheme === key && (
-                    <span style={{ marginLeft: 'auto', fontSize: '1.2em' }}>✓</span>
-                  )}
+                    position: 'relative'
+                  }}>
+                    {/* Checkmark overlay for selected theme */}
+                    {currentTheme === key && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '50%',
+                        left: '50%',
+                        transform: 'translate(-50%, -50%)',
+                        background: 'rgba(0, 0, 0, 0.6)',
+                        borderRadius: '50%',
+                        width: '32px',
+                        height: '32px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}>
+                        <Check size={20} color="white" strokeWidth={3} />
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Theme name */}
+                  <span style={{ 
+                    fontWeight: currentTheme === key ? 600 : 500,
+                    fontSize: '0.85em',
+                    textAlign: 'center',
+                    lineHeight: 1.2
+                  }}>
+                    {theme.name}
+                  </span>
                 </button>
               ))}
             </div>
