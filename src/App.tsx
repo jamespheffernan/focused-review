@@ -7,7 +7,7 @@ import { taskSyncQueue } from './services/taskSyncQueue'
 import './App.css'
 
 export default function App() {
-  const { route, loadQueue } = useApp()
+  const { route, syncFromOmniFocus } = useApp()
   
   useEffect(() => { 
     // Clear any stale sync queue items from previous sessions
@@ -15,7 +15,7 @@ export default function App() {
     console.log('[App] Clearing task sync queue on startup')
     taskSyncQueue.clearAll()
     
-    loadQueue()
+    syncFromOmniFocus()
     
     // Check Notion configuration on startup
     if (window.electronAPI?.notion) {
@@ -31,7 +31,7 @@ export default function App() {
         console.error('❌ Error checking Notion configuration:', error)
       })
     }
-  }, [])
+  }, [syncFromOmniFocus])
   
   if (route.name === 'queue') return <QueueScreen />
   if (route.name === 'focus') return <FocusScreen projectIndex={route.idx} />
