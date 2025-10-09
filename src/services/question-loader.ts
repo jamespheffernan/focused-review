@@ -21,14 +21,65 @@ function parseQuestionsFromMarkdown(markdown: string): QuestionSet {
     
     // Detect section headers
     if (line.includes('## First Review Questions')) {
+      // Save any pending question from previous section before switching
+      if (currentQuestion && currentQuestion.id && currentQuestion.prompt && currentQuestion.type) {
+        const question: QuestionDTO = {
+          id: currentQuestion.id,
+          prompt: currentQuestion.prompt,
+          type: currentQuestion.type as 'text' | 'slider',
+          order: currentQuestion.order || order
+        }
+        
+        if (currentSection === 'first') {
+          firstQuestions.push(question)
+        } else if (currentSection === 'subsequent') {
+          subsequentQuestions.push(question)
+        }
+        currentQuestion = null
+      }
+      
       currentSection = 'first'
       order = 1
       continue
     } else if (line.includes('## Subsequent Review Questions')) {
+      // Save any pending question from previous section before switching
+      if (currentQuestion && currentQuestion.id && currentQuestion.prompt && currentQuestion.type) {
+        const question: QuestionDTO = {
+          id: currentQuestion.id,
+          prompt: currentQuestion.prompt,
+          type: currentQuestion.type as 'text' | 'slider',
+          order: currentQuestion.order || order
+        }
+        
+        if (currentSection === 'first') {
+          firstQuestions.push(question)
+        } else if (currentSection === 'subsequent') {
+          subsequentQuestions.push(question)
+        }
+        currentQuestion = null
+      }
+      
       currentSection = 'subsequent'
       order = 1
       continue
     } else if (line.startsWith('## ') && !line.includes('Question Types')) {
+      // Save any pending question before leaving section
+      if (currentQuestion && currentQuestion.id && currentQuestion.prompt && currentQuestion.type) {
+        const question: QuestionDTO = {
+          id: currentQuestion.id,
+          prompt: currentQuestion.prompt,
+          type: currentQuestion.type as 'text' | 'slider',
+          order: currentQuestion.order || order
+        }
+        
+        if (currentSection === 'first') {
+          firstQuestions.push(question)
+        } else if (currentSection === 'subsequent') {
+          subsequentQuestions.push(question)
+        }
+        currentQuestion = null
+      }
+      
       // Other section, reset
       currentSection = 'none'
       continue
@@ -88,6 +139,10 @@ function parseQuestionsFromMarkdown(markdown: string): QuestionSet {
       subsequentQuestions.push(question)
     }
   }
+  
+  console.log('📋 Parsed questions from markdown:')
+  console.log('  First questions:', firstQuestions.map(q => q.id))
+  console.log('  Subsequent questions:', subsequentQuestions.map(q => q.id))
   
   return {
     first: firstQuestions.sort((a, b) => a.order - b.order),

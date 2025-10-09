@@ -100,6 +100,8 @@ const generateContextAwareQuestions = async (project: ProjectDTO): Promise<Quest
     
     const questions = [...baseQuestions]
     
+    console.log(`📋 Base questions for ${project.name} (hasBeenReviewed=${hasBeenReviewed}):`, baseQuestions.map(q => q.id))
+    
     // Add task-specific questions if there are tasks
     if (tasks.length > 0) {
       if (nextTasks.length > 0) {
@@ -138,7 +140,23 @@ const generateContextAwareQuestions = async (project: ProjectDTO): Promise<Quest
       })
     }
     
-    return questions.sort((a, b) => a.order - b.order)
+    const sortedQuestions = questions.sort((a, b) => a.order - b.order)
+    console.log(`📋 Final questions for ${project.name}:`, sortedQuestions.map(q => `${q.id} (order ${q.order})`))
+    
+    // Deduplicate questions by ID (keep first occurrence)
+    const seenIds = new Set<string>()
+    const dedupedQuestions = sortedQuestions.filter(q => {
+      if (seenIds.has(q.id)) {
+        console.warn(`⚠️ Duplicate question detected: ${q.id} - removing duplicate`)
+        return false
+      }
+      seenIds.add(q.id)
+      return true
+    })
+    
+    console.log(`📋 Deduplicated questions:`, dedupedQuestions.map(q => q.id))
+    
+    return dedupedQuestions
   } catch (error) {
     console.error('Error generating context-aware questions:', error)
     return FALLBACK_QUESTIONS
