@@ -574,7 +574,7 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
           className="action-button archive"
           onClick={() => archiveAndNext(project, projectIndex)}
         >
-          Archive
+          Drop
         </button>
         <button 
           className="action-button someday-maybe"
