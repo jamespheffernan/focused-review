@@ -29,9 +29,9 @@ export default function TimerCircle({ remaining, total }: TimerCircleProps) {
     arcColor = '#22c55e' // green for countdown
   } else {
     // Overtime: red arc grows clockwise from 12 o'clock (0deg)
-    // Can grow all the way around (up to 360 degrees for full circle)
+    // Takes 60 seconds to complete full circle
     const overtime = Math.abs(remaining)
-    const overtimeProgress = overtime / total
+    const overtimeProgress = overtime / 60 // Full circle at 60 seconds
     startAngle = 0
     endAngle = Math.min(360, overtimeProgress * 360) // grows from 0 to 360 (full circle)
     arcColor = '#ff4444' // red for overtime
