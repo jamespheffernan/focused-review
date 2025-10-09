@@ -12,18 +12,28 @@ export default function TimerCircle({ remaining, total }: TimerCircleProps) {
     return `${sign}${m}:${s}`
   }
 
-  // Calculate fill angle for the circle
-  // Start: 180° filled (left half)
-  // 0-30s: drain from 180° to 0° (emptying left half)
-  // 30s+: fill from 0° to 360° (filling clockwise, showing negative time)
-  let fillDegrees: number
+  // Calculate angles for the circle
+  // Countdown: green arc ticks clockwise from 6 o'clock (180deg) to 12 o'clock (360deg)
+  // Overtime: red arc ticks clockwise from 12 o'clock (0deg) onwards
+  let startAngle: number
+  let endAngle: number
+  let arcColor: string
+  
   if (remaining >= 0) {
-    // Draining phase: start at 180°, drain to 0°
-    fillDegrees = (remaining / total) * 180
+    // Normal countdown: green arc shrinks from 6 o'clock toward 12 o'clock
+    // When full: 180deg to 360deg (half circle, right side)
+    // When empty: 360deg to 360deg (no arc, at 12 o'clock)
+    const progress = remaining / total // 1.0 when full, 0.0 when empty
+    startAngle = 180 + (1 - progress) * 180 // advances from 180 to 360
+    endAngle = 360
+    arcColor = '#22c55e' // green for countdown
   } else {
-    // Filling phase: start at 0°, fill up to 360°
+    // Overtime: red arc grows clockwise from 12 o'clock (0deg)
     const overtime = Math.abs(remaining)
-    fillDegrees = Math.min(360, (overtime / total) * 180)
+    const overtimeProgress = Math.min(1, overtime / total)
+    startAngle = 0
+    endAngle = overtimeProgress * 180 // grows from 0 to 180
+    arcColor = '#ff4444' // red for overtime
   }
 
   return (
@@ -31,7 +41,13 @@ export default function TimerCircle({ remaining, total }: TimerCircleProps) {
       <div 
         className="timer-circle"
         style={{ 
-          background: `conic-gradient(from 0deg, #ff4444 0deg, #ff4444 ${fillDegrees}deg, rgba(255, 255, 255, 0.3) ${fillDegrees}deg)`
+          background: `conic-gradient(
+            rgba(255, 255, 255, 0.3) 0deg,
+            rgba(255, 255, 255, 0.3) ${startAngle}deg,
+            ${arcColor} ${startAngle}deg,
+            ${arcColor} ${endAngle}deg,
+            rgba(255, 255, 255, 0.3) ${endAngle}deg
+          )`
         }}
       />
       <div className={`timer-text ${remaining < 0 ? 'negative' : ''}`}>
