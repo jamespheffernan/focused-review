@@ -4,6 +4,8 @@ import QueueScreen from './screens/QueueScreen'
 import FocusScreen from './screens/FocusScreen'
 import SummaryScreen from './screens/SummaryScreen'
 import { taskSyncQueue } from './services/taskSyncQueue'
+// import { migrateQuestionsToDatabase } from './services/question-migration'
+import { migrateToQuestionPackages } from './services/questionPackage-migration'
 import './App.css'
 
 export default function App() {
@@ -14,6 +16,16 @@ export default function App() {
     // This prevents issues with invalid merged updates from before bug fixes
     console.log('[App] Clearing task sync queue on startup')
     taskSyncQueue.clearAll()
+    
+    // Migrate questions from markdown to database (runs once)
+    // migrateQuestionsToDatabase().catch(error => {
+    //   console.error('❌ Question migration failed:', error)
+    // })
+    
+    // Migrate to QuestionPackage system (runs once)
+    migrateToQuestionPackages().catch(error => {
+      console.error('❌ QuestionPackage migration failed:', error)
+    })
     
     syncFromOmniFocus()
     
@@ -31,9 +43,10 @@ export default function App() {
         console.error('❌ Error checking Notion configuration:', error)
       })
     }
-  }, [syncFromOmniFocus])
+  }, []) // Remove syncFromOmniFocus from dependencies to prevent duplicate calls
   
   if (route.name === 'queue') return <QueueScreen />
   if (route.name === 'focus') return <FocusScreen projectIndex={route.idx} />
+  // if (route.name === 'questions') return <QuestionsScreen />
   return <SummaryScreen />
 }
