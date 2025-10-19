@@ -93,11 +93,16 @@ export async function syncFromOmniFocus(): Promise<ProjectDTO[]> {
       try {
         // Clear old projects to prevent accumulation of dropped/completed items
         console.log('🗑️ Clearing old projects from cache...')
-        await db.transaction('rw', db.projects, db.tasks, async () => {
-          await db.projects.clear()
-          await db.tasks.clear()
-          console.log('✅ Old data cleared')
-        })
+        await Promise.race([
+          db.transaction('rw', db.projects, db.tasks, async () => {
+            await db.projects.clear()
+            await db.tasks.clear()
+            console.log('✅ Old data cleared')
+          }),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Database clear operation timed out')), 10000)
+          )
+        ])
         
         console.log('📝 Preparing to import fresh data...')
         
@@ -108,7 +113,12 @@ export async function syncFromOmniFocus(): Promise<ProjectDTO[]> {
         if (hasTaskData) {
           // Use the function that handles both projects and tasks
           console.log('Importing projects with tasks...')
-          await importOmniFocusProjectsWithTasks(omnifocusProjects)
+          await Promise.race([
+            importOmniFocusProjectsWithTasks(omnifocusProjects),
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Import operation timed out')), 30000)
+            )
+          ])
           console.log('✅ Import completed')
         } else {
           // Import projects only
@@ -138,8 +148,10 @@ export async function syncFromOmniFocus(): Promise<ProjectDTO[]> {
         console.timeEnd('syncFromOmniFocus')
         
         // Return projects from cache
+        console.log('📊 Loading projects from cache...')
         const cachedProjects = await loadQueueFromCache()
         console.log(`📊 Returning ${cachedProjects.length} projects from cache`)
+        console.log('📊 Sample cached project:', cachedProjects[0])
         return cachedProjects
       } catch (importError) {
         console.error('❌ Import failed:', importError)
@@ -358,9 +370,21 @@ export async function importOmniFocusProjectsWithTasks(projects: any[]) {
       console.log('💾 Sample task:', newTasks[0])
       
       // Use bulkPut instead of bulkAdd to handle potential duplicates
+      // Batch large imports to prevent performance issues
+      const BATCH_SIZE = 100
       try {
-        await db.tasks.bulkPut(newTasks)
-        console.log(`✅ Successfully imported ${newTasks.length} tasks from OmniFocus`)
+        if (newTasks.length <= BATCH_SIZE) {
+          await db.tasks.bulkPut(newTasks)
+          console.log(`✅ Successfully imported ${newTasks.length} tasks from OmniFocus`)
+        } else {
+          console.log(`📦 Importing ${newTasks.length} tasks in batches of ${BATCH_SIZE}...`)
+          for (let i = 0; i < newTasks.length; i += BATCH_SIZE) {
+            const batch = newTasks.slice(i, i + BATCH_SIZE)
+            await db.tasks.bulkPut(batch)
+            console.log(`✅ Imported batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(newTasks.length / BATCH_SIZE)} (${batch.length} tasks)`)
+          }
+          console.log(`✅ Successfully imported all ${newTasks.length} tasks from OmniFocus`)
+        }
       } catch (taskError) {
         console.error('❌ Error in tasks bulkPut:', taskError)
         throw taskError

@@ -3,7 +3,6 @@ import type { ProjectDTO, QuestionDTO, AnswerDraft } from './types'
 import * as Projects from './repos/projectsRepo'
 import * as Answers from './repos/answersRepo'
 import * as Sessions from './repos/sessionsRepo'
-import { fetchTasksForProject } from './repos/tasksRepo'
 import { getQuestionsForProject } from './services/question-loader'
 import { getStartOfISOWeek } from './services/review-formatter'
 import * as NotionSyncQueue from './repos/notionSyncQueueRepo'
@@ -90,80 +89,19 @@ const generateContextAwareQuestions = async (project: ProjectDTO): Promise<Quest
     // Check if project has been reviewed before
     const hasBeenReviewed = await Answers.hasBeenReviewedBefore(project.id)
     
-    // Get appropriate questions based on review history
-    const baseQuestions = await getQuestionsForProject(project.id, hasBeenReviewed)
+    // Get questions from QuestionPackage system
+    const questions = await getQuestionsForProject(project.id, hasBeenReviewed)
     
-    const tasks = await fetchTasksForProject(project.id)
-    const nextTasks = tasks.filter(t => t.status === 'next' && !t.completed)
-    const blockedTasks = tasks.filter(t => t.status === 'blocked' && !t.completed)
-    const overdueTasks = tasks.filter(t => t.dueDate && new Date(t.dueDate) < new Date() && !t.completed)
+    console.log(`📋 Questions for ${project.name} (hasBeenReviewed=${hasBeenReviewed}):`, questions.map(q => q.id))
     
-    const questions = [...baseQuestions]
-    
-    console.log(`📋 Base questions for ${project.name} (hasBeenReviewed=${hasBeenReviewed}):`, baseQuestions.map(q => q.id))
-    
-    // Add task-specific questions if there are tasks
-    if (tasks.length > 0) {
-      if (nextTasks.length > 0) {
-        questions.push({
-          id: 'q-next-tasks',
-          prompt: `What are your next actions for this project? (${nextTasks.length} identified)`,
-          type: 'text',
-          order: 3.5
-        })
-      }
-      
-      if (blockedTasks.length > 0) {
-        questions.push({
-          id: 'q-blocked-tasks',
-          prompt: `What's blocking progress on this project? (${blockedTasks.length} blocked tasks)`,
-          type: 'text',
-          order: 4.5
-        })
-      }
-      
-      if (overdueTasks.length > 0) {
-        questions.push({
-          id: 'q-overdue-tasks',
-          prompt: `How will you handle overdue tasks? (${overdueTasks.length} overdue)`,
-          type: 'text',
-          order: 5.5
-        })
-      }
-      
-      // Add a general task review question
-      questions.push({
-        id: 'q-task-review',
-        prompt: `Review your project tasks - any updates needed? (${tasks.length} total tasks)`,
-        type: 'text',
-        order: 6
-      })
-    }
-    
-    const sortedQuestions = questions.sort((a, b) => a.order - b.order)
-    console.log(`📋 Final questions for ${project.name}:`, sortedQuestions.map(q => `${q.id} (order ${q.order})`))
-    
-    // Deduplicate questions by ID (keep first occurrence)
-    const seenIds = new Set<string>()
-    const dedupedQuestions = sortedQuestions.filter(q => {
-      if (seenIds.has(q.id)) {
-        console.warn(`⚠️ Duplicate question detected: ${q.id} - removing duplicate`)
-        return false
-      }
-      seenIds.add(q.id)
-      return true
-    })
-    
-    console.log(`📋 Deduplicated questions:`, dedupedQuestions.map(q => q.id))
-    
-    return dedupedQuestions
+    return questions
   } catch (error) {
     console.error('Error generating context-aware questions:', error)
     return FALLBACK_QUESTIONS
   }
 }
 
-type Route = { name:'queue' } | { name:'focus', idx:number } | { name:'summary' }
+type Route = { name:'queue' } | { name:'focus', idx:number } | { name:'summary' } | { name:'questions' }
 
 type State = {
   route: Route
@@ -183,6 +121,8 @@ type State = {
   archiveAndNext: (project: ProjectDTO, idx: number) => Promise<void>
   somedayMaybeAndNext: (project: ProjectDTO, idx: number) => Promise<void>
   gotoSummary: () => void
+  gotoQuestions: () => void
+  gotoQueue: () => void
   loadProjectQuestions: (project: ProjectDTO) => Promise<void>
 }
 
@@ -205,15 +145,23 @@ export const useApp = create<State>((set, get) => ({
 
   syncFromOmniFocus: async () => {
     console.log('🔄 [Store] syncFromOmniFocus called')
-    const projects = await Projects.syncFromOmniFocus()
-    console.log(`🔄 [Store] syncFromOmniFocus received ${projects.length} projects`)
-    if (projects.length > 0) {
-      console.log('🔄 [Store] Sample project:', projects[0])
-    } else {
-      console.warn('⚠️ [Store] No projects returned from syncFromOmniFocus!')
+    try {
+      const projects = await Projects.syncFromOmniFocus()
+      console.log(`🔄 [Store] syncFromOmniFocus received ${projects.length} projects`)
+      if (projects.length > 0) {
+        console.log('🔄 [Store] Sample project:', projects[0])
+      } else {
+        console.warn('⚠️ [Store] No projects returned from syncFromOmniFocus!')
+      }
+      set({ queue: projects })
+      console.log('🔄 [Store] Queue state updated, new queue length:', projects.length)
+    } catch (error) {
+      console.error('❌ [Store] Error in syncFromOmniFocus:', error)
+      console.error('❌ [Store] Error details:', error)
+      // Set empty queue on error to prevent hanging
+      set({ queue: [] })
+      throw error
     }
-    set({ queue: projects })
-    console.log('🔄 [Store] Queue state updated, new queue length:', projects.length)
   },
 
   start: async (ids) => {
@@ -429,20 +377,61 @@ export const useApp = create<State>((set, get) => ({
       console.log('🔄 Checking Notion configuration...')
       const notionApi = window.electronAPI.notion
       // Get someday database ID from main process
-      notionApi.isConfigured().then(config => {
+      notionApi.isConfigured().then(async config => {
         console.log('✅ Notion config received:', config)
         if (config.somedayDb) {
           console.log(`🔄 Moving to Someday/Maybe database: ${config.somedayDb}`)
-          // Now move to someday/maybe
-          notionApi.moveToDatabase(project.id, config.somedayDb, {
-            ofId: project.id,
-            name: project.name,
-            status: 'dropped status'
-          }).then(result => {
-            console.log('✅ Move to Someday/Maybe result:', result)
-          }).catch(error => {
+          
+          try {
+            // Step 1: Fetch tasks from IndexedDB for this project
+            console.log('📋 Fetching tasks for project...')
+            const { db } = await import('./db')
+            const projectTasks = await db.tasks
+              .where('projectId')
+              .equals(project.id)
+              .toArray()
+            
+            console.log(`📋 Found ${projectTasks.length} tasks for project`)
+            
+            // Step 2: Find the Notion page ID for this project
+            console.log('🔍 Finding Notion page for project...')
+            // const pageResult = await notionApi.findPageByProjectId(project.id)
+            // const pageId = pageResult.success ? pageResult.pageId : null
+            const pageId = null // Temporarily disabled
+            
+            if (pageId && projectTasks.length > 0) {
+              // Step 3: Append tasks log to the Notion page
+              console.log('📝 Appending tasks log to Notion page...')
+              // const tasksLogResult = await notionApi.appendTasksLog(pageId, projectTasks.map(task => ({
+              //   name: task.name,
+              //   dueDate: task.dueDate,
+              //   context: task.context,
+              //   completed: task.completed
+              // })))
+              
+              // if (tasksLogResult.success) {
+              //   console.log('✅ Tasks log appended successfully')
+              // } else {
+              //   console.error('❌ Failed to append tasks log:', tasksLogResult.error)
+              // }
+            } else if (!pageId) {
+              console.log('⏭️ No Notion page found for project, skipping tasks log')
+            } else {
+              console.log('⏭️ No tasks found for project, skipping tasks log')
+            }
+            
+            // Step 4: Move to someday/maybe database (this will copy all content including the tasks log)
+            console.log('🔄 Moving page to Someday/Maybe database...')
+            const moveResult = await notionApi.moveToDatabase(project.id, config.somedayDb, {
+              ofId: project.id,
+              name: project.name,
+              status: 'dropped status'
+            })
+            
+            console.log('✅ Move to Someday/Maybe result:', moveResult)
+          } catch (error) {
             console.error('❌ Move to Someday/Maybe failed:', error)
-          })
+          }
         } else {
           console.log('⏭️ Notion someday/maybe not configured, skipping')
           console.log('   config.somedayDb =', config.somedayDb)
@@ -474,7 +463,11 @@ export const useApp = create<State>((set, get) => ({
     }
   },
 
-  gotoSummary: () => set({ route: { name:'summary' } })
+  gotoSummary: () => set({ route: { name:'summary' } }),
+  
+  gotoQuestions: () => set({ route: { name:'questions' } }),
+  
+  gotoQueue: () => set({ route: { name:'queue' } })
 }))
 
 /**
