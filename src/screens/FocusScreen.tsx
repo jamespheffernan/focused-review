@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useApp } from '../store'
-import type { AnswerDraft, TaskDTO } from '../types'
+import type { AnswerDraft, TaskDTO, QuestionDTO } from '../types'
 import { createTimer } from '../services/timer'
 import { latest, getInitialAnswer } from '../repos/answersRepo'
 import { fetchTasksForProject, updateTask, deleteTask } from '../repos/tasksRepo'
@@ -33,8 +33,23 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [showInboxSuccess, setShowInboxSuccess] = useState(false)
   const [inboxTaskName, setInboxTaskName] = useState('')
+  // Local state to track dynamically injected followup questions
+  const [injectedFollowups, setInjectedFollowups] = useState<Map<number, QuestionDTO>>(new Map())
 
-  const q = currentProjectQuestions[idx]
+  // Merge base questions with injected followups
+  const allQuestions = useMemo(() => {
+    const questions = [...currentProjectQuestions]
+    console.log(`[DEBUG] Merging questions - base:`, questions.map(q => q.id))
+    console.log(`[DEBUG] Merging questions - injected followups:`, Array.from(injectedFollowups.entries()))
+    // Insert injected followups at their proper positions
+    injectedFollowups.forEach((followup, afterIndex) => {
+      questions.splice(afterIndex + 1, 0, followup)
+    })
+    console.log(`[DEBUG] Final merged questions:`, questions.map(q => q.id))
+    return questions
+  }, [currentProjectQuestions, injectedFollowups])
+
+  const q = allQuestions[idx]
 
   // Load tasks for the current project
   const loadProjectTasks = useCallback(async () => {
@@ -71,6 +86,7 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
     setInitialAnswer('')
     setShowConfirmation(false) // Reset confirmation overlay when project changes
     setShowInboxSuccess(false) // Reset inbox success overlay when project changes
+    setInjectedFollowups(new Map()) // Clear injected followups when switching projects
     // Load context-aware questions for the current project
     loadProjectQuestions(project)
     // Auto-load tasks for the current project
@@ -131,13 +147,11 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
       }
 
       // Handle number keys 1-3 for engagement slider (question 6)
-      if (q.id === 'q-engage' && ['1', '2', '3'].includes(e.key)) {
+      if (q.id.includes('engagement') && ['1', '2', '3'].includes(e.key)) {
         e.preventDefault()
         const engagementValue = parseInt(e.key)
         handleEngagementChange(engagementValue)
-        
-        // Auto-advance after setting engagement
-        moveToNextQuestion()
+        // handleEngagementChange now handles auto-advance
         return
       }
 
@@ -156,7 +170,7 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
           break
         case 'ArrowRight':
           e.preventDefault()
-          setIdx(Math.min(currentProjectQuestions.length - 1, idx + 1))
+          setIdx(Math.min(allQuestions.length - 1, idx + 1))
           break
         case 's':
           if (e.metaKey || e.ctrlKey) {
@@ -212,7 +226,7 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [idx, currentProjectQuestions.length, project, projectIndex, skipAndNext, markReviewedAndNext, q?.id, q, handleEngagementChange, openInOmniFocus, handleProjectNavigate, queue.length])
+  }, [idx, allQuestions.length, project, projectIndex, skipAndNext, markReviewedAndNext, q?.id, q, handleEngagementChange, openInOmniFocus, handleProjectNavigate, queue.length])
 
   const loadAnswers = async () => {
     if (!project || !q) return // Guard against undefined
@@ -226,6 +240,11 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
     if (q.id.includes('-followup')) {
       const parentQuestionId = q.id.replace('-followup', '')
       const initial = await getInitialAnswer(project.id, parentQuestionId)
+      setInitialAnswer(initial?.text ?? '')
+    } else if (q.id.includes('-subsequent')) {
+      // For subsequent questions, load the initial answer
+      const baseQuestionId = q.id.replace('-subsequent', '-initial')
+      const initial = await getInitialAnswer(project.id, baseQuestionId)
       setInitialAnswer(initial?.text ?? '')
     } else {
       setInitialAnswer('')
@@ -287,6 +306,12 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
   async function handleEngagementChange(score?: number) {
     if (!project || !q) return // Guard against undefined
     
+    console.log(`[DEBUG] handleEngagementChange:`, { score, projectId: project.id, questionId: q.id })
+    
+    // Set the current answer text for consistency
+    const answerText = `Engagement: ${score}/3`
+    setCurrentAnswer(answerText)
+    
     // Get existing answer for this week to reuse its ID (avoid creating duplicates)
     const currentWeek = startOfISOWeek()
     const existingThisWeek = await db.answers
@@ -300,23 +325,69 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
       projectID: project.id, questionID: q.id,
       engagementScore: score, weekOf: currentWeek, status: 'Updated'
     }
+    
+    console.log(`[DEBUG] Saving engagement answer:`, draft)
     await setDraft(draft)
     
     // Update answered questions list for engagement slider
+    const newAnsweredQuestion = { id: q.id, prompt: q.prompt, answer: answerText, status: 'answered' as const }
     const existingIndex = answeredQuestions.findIndex(aq => aq.id === q.id)
+    let updatedAnsweredQuestions
     if (existingIndex >= 0) {
       // Update existing answer
-      const updated = [...answeredQuestions]
-      updated[existingIndex] = { id: q.id, prompt: q.prompt, answer: `Engagement: ${score}/3`, status: 'answered' }
-      setAnsweredQuestions(updated)
+      updatedAnsweredQuestions = [...answeredQuestions]
+      updatedAnsweredQuestions[existingIndex] = newAnsweredQuestion
     } else {
       // Add new answer
-      setAnsweredQuestions([...answeredQuestions, { id: q.id, prompt: q.prompt, answer: `Engagement: ${score}/3`, status: 'answered' }])
+      updatedAnsweredQuestions = [...answeredQuestions, newAnsweredQuestion]
+    }
+    setAnsweredQuestions(updatedAnsweredQuestions)
+    
+    // Check if we need to inject a followup question based on the engagement score
+    // Engagement followup logic: show if score <= 1
+    let followupInjected = false
+    if (score !== undefined && score <= 1) {
+      const followupQuestionId = `${q.id}-followup`
+      // Check if followup already exists
+      if (!allQuestions.some(fq => fq.id === followupQuestionId)) {
+        // Inject the followup question right after the current question
+        const followupQuestion: QuestionDTO = {
+          id: followupQuestionId,
+          prompt: "Why do you feel this way?",
+          type: 'text',
+          order: q.order + 0.1
+        }
+        console.log(`[DEBUG] Injecting followup question after index ${idx}:`, followupQuestion)
+        setInjectedFollowups(prev => new Map(prev).set(idx, followupQuestion))
+        followupInjected = true
+      }
+    }
+    
+    // Auto-advance to next question (or to injected followup)
+    // Use local variable for answer check, not state
+    const nextIdx = idx + 1
+    // If we injected a followup, the total length increased by 1
+    const totalQuestions = allQuestions.length + (followupInjected ? 1 : 0)
+    console.log(`[DEBUG] Engagement auto-advance from ${q.id} to index ${nextIdx}, total questions: ${totalQuestions} (injected: ${followupInjected})`)
+    console.log(`[DEBUG] updatedAnsweredQuestions:`, updatedAnsweredQuestions)
+    
+    if (nextIdx >= totalQuestions) {
+      // Last question - trigger completion
+      console.log(`[DEBUG] Last question answered, triggering completion`)
+      setShowConfirmation(true)
+      setTimeout(() => {
+        setShowConfirmation(false)
+        markReviewedAndNext(project, projectIndex)
+      }, 1500)
+    } else {
+      setIdx(nextIdx)
     }
   }
 
   async function handleYesNoChange(value: boolean) {
     if (!project || !q) return // Guard against undefined
+    
+    console.log(`[DEBUG] handleYesNoChange:`, { value, projectId: project.id, questionId: q.id })
     
     setSelectedYesNo(value)
     const textValue = value ? 'yes' : 'no'
@@ -335,33 +406,139 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
       projectID: project.id, questionID: q.id,
       text: textValue, weekOf: currentWeek, status: 'Updated'
     }
+    
+    console.log(`[DEBUG] Saving yes/no answer:`, draft)
     await setDraft(draft)
     
-    // Update answered questions list
+    // Update answered questions list BEFORE advancing
+    const newAnsweredQuestion = { id: q.id, prompt: q.prompt, answer: textValue, status: 'answered' as const, draftStatus: draft.status }
     const existingIndex = answeredQuestions.findIndex(aq => aq.id === q.id)
+    let updatedAnsweredQuestions
     if (existingIndex >= 0) {
       // Update existing answer
-      const updated = [...answeredQuestions]
-      updated[existingIndex] = { id: q.id, prompt: q.prompt, answer: textValue, status: 'answered', draftStatus: draft.status }
-      setAnsweredQuestions(updated)
+      updatedAnsweredQuestions = [...answeredQuestions]
+      updatedAnsweredQuestions[existingIndex] = newAnsweredQuestion
     } else {
       // Add new answer
-      setAnsweredQuestions([...answeredQuestions, { id: q.id, prompt: q.prompt, answer: textValue, status: 'answered', draftStatus: draft.status }])
+      updatedAnsweredQuestions = [...answeredQuestions, newAnsweredQuestion]
+    }
+    setAnsweredQuestions(updatedAnsweredQuestions)
+    
+    // Check if we need to inject a followup question based on the yes/no answer
+    // Get the question package to check followup logic
+    const isInitial = q.id.includes('-initial')
+    const isSubsequent = q.id.includes('-subsequent')
+    const packageId = q.id.replace('-initial', '').replace('-subsequent', '')
+    
+    console.log(`[DEBUG] Yes/No answer processing:`, { 
+      questionId: q.id, 
+      answer: textValue, 
+      packageId, 
+      isInitial, 
+      isSubsequent 
+    })
+    
+    let followupInjected = false
+    // Only inject followups for subsequent questions with 'if_no' logic
+    // Initial questions don't have yes/no followups in this implementation
+    if (isSubsequent && textValue === 'no') {
+      console.log(`[DEBUG] Subsequent question answered 'no', checking for followup...`)
+      const followupQuestionId = `${q.id}-followup`
+      // Check if followup already exists
+      if (!allQuestions.some(fq => fq.id === followupQuestionId)) {
+        // Determine followup prompt based on question type
+        let followupPrompt = ''
+        let followupType: 'text' | 'text-parsed' = 'text'
+        
+        if (packageId === 'pkg-alignment') {
+          followupPrompt = 'Should you deprioritize it then? Why are you still doing this project?'
+        } else if (packageId === 'pkg-next-action') {
+          followupPrompt = 'Please edit your task details and define a clear next action.'
+        } else if (packageId === 'pkg-timeline') {
+          followupPrompt = "What's the new realistic timeline for this project?"
+          followupType = 'text-parsed'
+        }
+        
+        if (followupPrompt) {
+          const followupQuestion: QuestionDTO = {
+            id: followupQuestionId,
+            prompt: followupPrompt,
+            type: followupType,
+            order: q.order + 0.1
+          }
+          console.log(`[DEBUG] Injecting yes/no followup question after index ${idx}:`, followupQuestion)
+          setInjectedFollowups(prev => new Map(prev).set(idx, followupQuestion))
+          followupInjected = true
+        } else {
+          console.log(`[DEBUG] No followup prompt found for packageId: ${packageId}`)
+        }
+      } else {
+        console.log(`[DEBUG] Followup ${followupQuestionId} already exists, skipping injection`)
+      }
+    } else if (isInitial && textValue === 'no') {
+      console.log(`[DEBUG] Initial question answered 'no' - checking for initial followup...`)
+      // Initial questions can also have followups, but with different logic
+      const followupQuestionId = `${q.id}-followup`
+      if (!allQuestions.some(fq => fq.id === followupQuestionId)) {
+        let followupPrompt = ''
+        let followupType: 'text' | 'text-parsed' = 'text'
+        
+        if (packageId === 'pkg-alignment') {
+          followupPrompt = 'Should you deprioritize it then? Why are you doing this project?'
+        } else if (packageId === 'pkg-next-action') {
+          followupPrompt = 'Please edit your task details and define a clear next action.'
+        }
+        // Note: pkg-timeline initial is NOT yes/no, so no followup here
+        
+        if (followupPrompt) {
+          const followupQuestion: QuestionDTO = {
+            id: followupQuestionId,
+            prompt: followupPrompt,
+            type: followupType,
+            order: q.order + 0.1
+          }
+          console.log(`[DEBUG] Injecting initial yes/no followup question after index ${idx}:`, followupQuestion)
+          setInjectedFollowups(prev => new Map(prev).set(idx, followupQuestion))
+          followupInjected = true
+        }
+      }
+    } else {
+      console.log(`[DEBUG] Answer is '${textValue}' for ${isInitial ? 'initial' : 'subsequent'} question - no followup needed`)
     }
     
-    // Auto-advance after selection
-    setTimeout(() => {
-      moveToNextQuestion()
-    }, 500)
+    // Auto-advance - check if we're on the last question AFTER potential followup injection
+    const nextIdx = idx + 1
+    // If we injected a followup, the total length increased by 1
+    const totalQuestions = allQuestions.length + (followupInjected ? 1 : 0)
+    console.log(`[DEBUG] Yes/No auto-advance from ${q.id} to index ${nextIdx}, total questions: ${totalQuestions} (injected: ${followupInjected})`)
+    console.log(`[DEBUG] updatedAnsweredQuestions:`, updatedAnsweredQuestions)
+    
+    if (nextIdx >= totalQuestions) {
+      // Last question - trigger completion
+      console.log(`[DEBUG] Last question answered, triggering completion`)
+      setShowConfirmation(true)
+      setTimeout(() => {
+        setShowConfirmation(false)
+        markReviewedAndNext(project, projectIndex)
+      }, 1500)
+    } else {
+      setIdx(nextIdx)
+    }
   }
 
   // Function to mark a question as skipped
   function markQuestionAsSkipped(questionId: string) {
-    const question = currentProjectQuestions.find(q => q.id === questionId)
+    const question = allQuestions.find(q => q.id === questionId)
     if (!question) return
 
     const existingIndex = answeredQuestions.findIndex(aq => aq.id === questionId)
     if (existingIndex >= 0) {
+      // Don't overwrite if already answered - only mark as skipped if it was previously skipped or not in the list
+      const existing = answeredQuestions[existingIndex]
+      if (existing.status === 'answered') {
+        console.log(`[DEBUG] Not marking ${questionId} as skipped - already answered with:`, existing.answer)
+        return
+      }
       // Update existing entry to skipped
       const updated = [...answeredQuestions]
       updated[existingIndex] = { id: questionId, prompt: question.prompt, answer: 'Skipped', status: 'skipped' }
@@ -374,9 +551,23 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
 
   // Function to move to next question (and mark current as skipped if not answered)
   function moveToNextQuestion() {
+    console.log(`[DEBUG] moveToNextQuestion called from question:`, {
+      questionId: q?.id,
+      prompt: q?.prompt,
+      currentAnswer: currentAnswer,
+      answeredQuestions: answeredQuestions.map(aq => ({ id: aq.id, status: aq.status }))
+    })
+    
+    // Calculate current total including any pending injected followups
+    // This accounts for followups that were just injected but haven't rendered yet
+    const currentTotal = currentProjectQuestions.length + injectedFollowups.size
     const nextIdx = idx + 1
-    if (nextIdx >= currentProjectQuestions.length) {
+    
+    console.log(`[DEBUG] moveToNextQuestion: nextIdx=${nextIdx}, currentTotal=${currentTotal}, allQuestions.length=${allQuestions.length}`)
+    
+    if (nextIdx >= currentTotal) {
       // Last question - show confirmation and complete the review
+      console.log(`[DEBUG] Last question - triggering completion`)
       setShowConfirmation(true)
       setTimeout(() => {
         setShowConfirmation(false)
@@ -384,9 +575,25 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
       }, 1500)
     } else {
       // Mark current question as skipped if not answered
-      const hasAnswer = answeredQuestions.some(aq => aq.id === q.id && aq.status === 'answered')
+      const hasAnswerInArray = answeredQuestions.some(aq => aq.id === q.id && aq.status === 'answered')
+      const hasAnswerInText = currentAnswer.trim() !== ''
+      const hasAnswer = hasAnswerInArray || hasAnswerInText
+      
+      console.log(`[DEBUG] Skip check for ${q.id}:`, {
+        hasAnswerInArray,
+        hasAnswerInText,
+        hasAnswer,
+        willSkip: !hasAnswer
+      })
+      
       if (!hasAnswer) {
-        markQuestionAsSkipped(q.id)
+        // Don't mark the PARENT question as skipped if this is a followup
+        if (q.id.includes('-followup')) {
+          console.log(`[DEBUG] Not marking ${q.id} as skipped - it's a followup question`)
+        } else {
+          console.log(`[DEBUG] Marking ${q.id} as skipped`)
+          markQuestionAsSkipped(q.id)
+        }
       }
       setIdx(nextIdx)
     }
@@ -518,7 +725,7 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
     return <div className="focus-screen">Loading project...</div>
   }
 
-  if (currentProjectQuestions.length === 0) {
+  if (allQuestions.length === 0) {
     return <div className="focus-screen">Loading questions...</div>
   }
 
@@ -550,7 +757,7 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
                 <div 
                   key={aq.id}
                   className={`answered-question-item ${aq.id === q.id ? 'active' : ''} ${aq.status === 'skipped' ? 'skipped' : 'answered'}`}
-                  onClick={() => setIdx(currentProjectQuestions.findIndex(x => x.id === aq.id))}
+                  onClick={() => setIdx(allQuestions.findIndex(x => x.id === aq.id))}
                 >
                   <div className="question">{aq.prompt}</div>
                   <div className="answer">
@@ -673,7 +880,7 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
               </button>
             </div>
           </div>
-        ) : (
+        ) : q.type === 'slider' ? (
           <div className="mood-selector">
             <div className="mood-prompt">How do you feel about this project?</div>
             <div className="mood-options">
@@ -682,6 +889,7 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
                 onClick={() => {
                   setSelectedMood(1)
                   handleEngagementChange(1)
+                  // handleEngagementChange now handles auto-advance
                 }}
                 title="Not feeling it"
               >
@@ -693,6 +901,7 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
                 onClick={() => {
                   setSelectedMood(2)
                   handleEngagementChange(2)
+                  // handleEngagementChange now handles auto-advance
                 }}
                 title="Neutral"
               >
@@ -704,6 +913,7 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
                 onClick={() => {
                   setSelectedMood(3)
                   handleEngagementChange(3)
+                  // handleEngagementChange now handles auto-advance
                 }}
                 title="Feeling good"
               >
@@ -712,6 +922,8 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
               </button>
             </div>
           </div>
+        ) : (
+          <div>Unknown question type: {q.type}</div>
         )}
         </div>
         
