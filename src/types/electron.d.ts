@@ -18,6 +18,7 @@ export interface ElectronAPI {
     isRunning: () => Promise<boolean>
     launch: () => Promise<boolean>
     getDatabasePath: () => Promise<{ found: boolean; path?: string; files?: string[] }>
+    openProject: (projectId: string) => Promise<{ success: boolean; projectId?: string; url?: string; error?: string }>
   }
   
   file: {

@@ -1694,11 +1694,11 @@ ipcMain.handle('open-external-url', async (event, url) => {
       }
     }
 
-    // Security: Only allow https://, http://, and notion:// protocols
-    if (!['http:', 'https:', 'notion:'].includes(urlObj.protocol)) {
+    // Security: Only allow https://, http://, notion://, and omnifocus:// protocols
+    if (!['http:', 'https:', 'notion:', 'omnifocus:'].includes(urlObj.protocol)) {
       return {
         success: false,
-        error: `Unsupported protocol: ${urlObj.protocol}. Only http://, https://, and notion:// are allowed.`
+        error: `Unsupported protocol: ${urlObj.protocol}. Only http://, https://, notion://, and omnifocus:// are allowed.`
       }
     }
 
@@ -1715,6 +1715,39 @@ ipcMain.handle('open-external-url', async (event, url) => {
     return {
       success: false,
       error: error.message || 'Failed to open URL'
+    }
+  }
+})
+
+// IPC handler for opening OmniFocus projects via deep links
+ipcMain.handle('omnifocus:open-project', async (event, projectId) => {
+  try {
+    // Validate projectId
+    if (!projectId || typeof projectId !== 'string') {
+      return {
+        success: false,
+        error: 'Invalid project ID: Project ID must be a non-empty string'
+      }
+    }
+
+    // Construct OmniFocus deep link URL
+    const omnifocusUrl = `omnifocus:///task/${projectId}`
+    
+    console.log(`Opening OmniFocus project: ${omnifocusUrl}`)
+    
+    // Use the existing open-external-url handler which now supports omnifocus://
+    const result = await shell.openExternal(omnifocusUrl)
+    
+    return {
+      success: true,
+      projectId: projectId,
+      url: omnifocusUrl
+    }
+  } catch (error) {
+    console.error('Error opening OmniFocus project:', error)
+    return {
+      success: false,
+      error: error.message || 'Failed to open OmniFocus project'
     }
   }
 })

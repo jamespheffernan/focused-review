@@ -88,6 +88,15 @@ export default function KeyboardShortcuts() {
           <strong>Cmd/Ctrl + N</strong> Open Notion link
         </div>
         <div style={{ marginBottom: '8px' }}>
+          <strong>Cmd/Ctrl + O</strong> Open in OmniFocus
+        </div>
+        <div style={{ marginBottom: '8px' }}>
+          <strong>Cmd/Ctrl + [</strong> Previous project
+        </div>
+        <div style={{ marginBottom: '8px' }}>
+          <strong>Cmd/Ctrl + ]</strong> Next project
+        </div>
+        <div style={{ marginBottom: '8px' }}>
           <strong>🎤</strong> Voice input (when available)
         </div>
       </div>

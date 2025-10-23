@@ -9,9 +9,10 @@ import TimerCircle from '../components/TimerCircle'
 import KeyboardShortcuts from '../components/KeyboardShortcuts'
 import TaskList from '../components/TaskList'
 import FloatingInboxButton from '../components/FloatingInboxButton'
+import ProjectNavigator from '../components/ProjectNavigator'
 import { extractNotionLink, getNotionLinkError, hasNotionLink } from '../utils/notionLink'
 import { parseNaturalDate, describeNaturalDate } from '../utils/date-parser'
-import { FileText, SkipForward, CheckCircle, RefreshCw } from 'lucide-react'
+import { FileText, SkipForward, CheckCircle, RefreshCw, ExternalLink } from 'lucide-react'
 
 export default function FocusScreen({ projectIndex }: { projectIndex: number }) {
   const { queue, currentProjectQuestions, setDraft, markReviewedAndNext, skipAndNext, markCompleteAndNext, archiveAndNext, somedayMaybeAndNext, loadProjectQuestions } = useApp()
@@ -171,6 +172,31 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
             openNotionLink()
           }
           break
+        case 'o':
+          // Ctrl+O (Windows/Linux) or Cmd+O (Mac) to open OmniFocus project
+          if (e.metaKey || e.ctrlKey) {
+            e.preventDefault()
+            openInOmniFocus()
+          }
+          break
+        case '[':
+          // Ctrl+[ (Windows/Linux) or Cmd+[ (Mac) to go to previous project
+          if (e.metaKey || e.ctrlKey) {
+            e.preventDefault()
+            if (projectIndex > 0) {
+              handleProjectNavigate(projectIndex - 1)
+            }
+          }
+          break
+        case ']':
+          // Ctrl+] (Windows/Linux) or Cmd+] (Mac) to go to next project
+          if (e.metaKey || e.ctrlKey) {
+            e.preventDefault()
+            if (projectIndex < queue.length - 1) {
+              handleProjectNavigate(projectIndex + 1)
+            }
+          }
+          break
         case 'Escape':
           e.preventDefault()
           // Skip current project
@@ -186,7 +212,7 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [idx, currentProjectQuestions.length, project, projectIndex, skipAndNext, markReviewedAndNext, q?.id, q, handleEngagementChange])
+  }, [idx, currentProjectQuestions.length, project, projectIndex, skipAndNext, markReviewedAndNext, q?.id, q, handleEngagementChange, openInOmniFocus, handleProjectNavigate, queue.length])
 
   const loadAnswers = async () => {
     if (!project || !q) return // Guard against undefined
@@ -413,6 +439,46 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
     }
   }
 
+  // Function to handle project navigation
+  function handleProjectNavigate(newIndex: number) {
+    if (newIndex < 0 || newIndex >= queue.length) {
+      console.warn(`Invalid project index: ${newIndex}. Queue length: ${queue.length}`)
+      return
+    }
+
+    // Update the route to the new project index
+    // This will trigger the useEffect that loads questions for the new project
+    const { route } = useApp.getState()
+    if (route.name === 'focus') {
+      useApp.setState({ route: { name: 'focus', idx: newIndex } })
+    }
+  }
+
+  // Function to open current project in OmniFocus
+  async function openInOmniFocus() {
+    if (!project) return // Guard against undefined
+    
+    try {
+      // Check if Electron API is available
+      if (!window.electronAPI?.omnifocus?.openProject) {
+        alert('Cannot open OmniFocus project: Electron API not available. This feature requires the desktop app.')
+        return
+      }
+
+      // Open the project in OmniFocus using deep link
+      const result = await window.electronAPI.omnifocus.openProject(project.id)
+      
+      if (!result.success) {
+        alert(`Failed to open OmniFocus project: ${result.error || 'Unknown error'}`)
+      } else {
+        console.log(`Opened OmniFocus project: ${project.name} (${project.id})`)
+      }
+    } catch (error) {
+      console.error('Error opening OmniFocus project:', error)
+      alert(`Error opening OmniFocus project: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
   // Function to create inbox task
   async function handleCreateInboxTask(taskName: string) {
     try {
@@ -508,7 +574,19 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
       <div className="focus-center-column">
         <div className="focus-header-right">
           <div className="project-info">
+            <ProjectNavigator 
+              currentIndex={projectIndex}
+              queue={queue}
+              onNavigate={handleProjectNavigate}
+            />
             <div className="project-name">
+              <button 
+                className="omnifocus-button" 
+                onClick={openInOmniFocus} 
+                title={`Open in OmniFocus (${window.electronAPI?.platform.isMacOS ? 'Cmd' : 'Ctrl'}+O)`}
+              >
+                <ExternalLink size={20} />
+              </button>
               Project: {project.name}
               {hasNotionLink(project.notes) && (
                 <span 

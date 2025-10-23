@@ -20,7 +20,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     updateTask: (taskId, updates) => ipcRenderer.invoke('omnifocus:update-task', taskId, updates),
     isRunning: () => ipcRenderer.invoke('omnifocus:is-running'),
     launch: () => ipcRenderer.invoke('omnifocus:launch'),
-    getDatabasePath: () => ipcRenderer.invoke('omnifocus:get-database-path')
+    getDatabasePath: () => ipcRenderer.invoke('omnifocus:get-database-path'),
+    openProject: (projectId) => ipcRenderer.invoke('omnifocus:open-project', projectId)
   },
   
   // File operations
