@@ -366,9 +366,10 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
     // Auto-advance to next question (or to injected followup)
     // Use local variable for answer check, not state
     const nextIdx = idx + 1
-    // If we injected a followup, the total length increased by 1
-    const totalQuestions = allQuestions.length + (followupInjected ? 1 : 0)
-    console.log(`[DEBUG] Engagement auto-advance from ${q.id} to index ${nextIdx}, total questions: ${totalQuestions} (injected: ${followupInjected})`)
+    // Calculate total questions including any followup that was just injected
+    // Use currentProjectQuestions.length as base since allQuestions is memoized and won't update until next render
+    const totalQuestions = currentProjectQuestions.length + injectedFollowups.size + (followupInjected ? 1 : 0)
+    console.log(`[DEBUG] Engagement auto-advance from ${q.id} to index ${nextIdx}, total questions: ${totalQuestions} (injected: ${followupInjected}, existing followups: ${injectedFollowups.size})`)
     console.log(`[DEBUG] updatedAnsweredQuestions:`, updatedAnsweredQuestions)
     
     if (nextIdx >= totalQuestions) {
@@ -508,9 +509,10 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
     
     // Auto-advance - check if we're on the last question AFTER potential followup injection
     const nextIdx = idx + 1
-    // If we injected a followup, the total length increased by 1
-    const totalQuestions = allQuestions.length + (followupInjected ? 1 : 0)
-    console.log(`[DEBUG] Yes/No auto-advance from ${q.id} to index ${nextIdx}, total questions: ${totalQuestions} (injected: ${followupInjected})`)
+    // Calculate total questions including any followup that was just injected
+    // Use currentProjectQuestions.length as base since allQuestions is memoized and won't update until next render
+    const totalQuestions = currentProjectQuestions.length + injectedFollowups.size + (followupInjected ? 1 : 0)
+    console.log(`[DEBUG] Yes/No auto-advance from ${q.id} to index ${nextIdx}, total questions: ${totalQuestions} (injected: ${followupInjected}, existing followups: ${injectedFollowups.size})`)
     console.log(`[DEBUG] updatedAnsweredQuestions:`, updatedAnsweredQuestions)
     
     if (nextIdx >= totalQuestions) {
