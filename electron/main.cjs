@@ -314,6 +314,11 @@ ipcMain.handle('omnifocus:get-projects', async () => {
         const project = projectData[i]
         
         if (project && project.name && project.name.trim() !== '') {
+          // Skip completed projects
+          if (project.status === 'done' || project.status === 'completed' || project.status === 'done status') {
+            continue
+          }
+          
           let status = 'active'
           if (project.status === 'on hold') status = 'on_hold'
           if (project.status === 'dropped') status = 'dropped'

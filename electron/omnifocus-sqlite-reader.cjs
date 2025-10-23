@@ -220,11 +220,9 @@ function mapToAppFormat(rawProjects, projectInfoMap, allTasks, taskContexts) {
     // Get project info for review dates
     const projectInfo = projectInfoMap.get(rawProject.projectInfo || '')
     
-    // Convert status (childrenState: 0=active, 1=on hold, 2=done, 3=dropped)
-    let status = 'active status'
-    if (rawProject.status === 1) status = 'on hold'
-    else if (rawProject.status === 2) status = 'done status'
-    else if (rawProject.status === 3) status = 'dropped'
+    // Convert status (childrenState: 0=active, 1=active, 2=active, 3=dropped)
+    let status = 'active'
+    if (rawProject.status === 3) status = 'dropped'
     
     // Get tasks for this project
     const rawTasks = allTasks.get(rawProject.persistentIdentifier) || []

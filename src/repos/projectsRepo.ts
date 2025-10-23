@@ -28,6 +28,11 @@ export async function loadQueueFromCache(): Promise<ProjectDTO[]> {
       .where('status')
       .notEqual('dropped')
       .toArray()
+      .then(projects => projects.filter(p => 
+        (p as any).status !== 'done status' && 
+        (p as any).status !== 'completed' &&
+        (p as any).status !== 'done'
+      ))
     
     console.log(`📦 Loaded ${allProjects.length} active projects from cache`)
     
@@ -371,6 +376,12 @@ export async function importOmniFocusProjectsWithTasks(projects: any[]) {
     
     console.log(`📝 Prepared ${projectDTOs.length} projects and ${allTasks.length} tasks`)
     console.log('📝 Sample project DTO:', projectDTOs[0])
+    
+    // Clear existing data before importing fresh data
+    console.log('🧹 Clearing existing projects and tasks...')
+    await db.projects.clear()
+    await db.tasks.clear()
+    console.log('✅ Cleared existing data')
     
     // Add projects one at a time to avoid database lock issues
     console.log(`💾 Starting to add ${projectDTOs.length} projects...`)
