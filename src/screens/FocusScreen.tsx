@@ -2,13 +2,15 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useApp } from '../store'
 import type { AnswerDraft, TaskDTO } from '../types'
 import { createTimer } from '../services/timer'
-import { latest } from '../repos/answersRepo'
+import { latest, getInitialAnswer } from '../repos/answersRepo'
 import { fetchTasksForProject, updateTask, deleteTask } from '../repos/tasksRepo'
 import { db } from '../db'
 import TimerCircle from '../components/TimerCircle'
 import KeyboardShortcuts from '../components/KeyboardShortcuts'
 import TaskList from '../components/TaskList'
+import FloatingInboxButton from '../components/FloatingInboxButton'
 import { extractNotionLink, getNotionLinkError, hasNotionLink } from '../utils/notionLink'
+import { parseNaturalDate, describeNaturalDate } from '../utils/date-parser'
 import { FileText, SkipForward, CheckCircle, RefreshCw } from 'lucide-react'
 
 export default function FocusScreen({ projectIndex }: { projectIndex: number }) {
@@ -24,7 +26,12 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
   const [projectTasks, setProjectTasks] = useState<TaskDTO[]>([])
   const [tasksLoading, setTasksLoading] = useState(false)
   const [selectedMood, setSelectedMood] = useState<number | null>(null)
+  const [selectedYesNo, setSelectedYesNo] = useState<boolean | null>(null)
+  const [datePreview, setDatePreview] = useState<string | null>(null)
+  const [initialAnswer, setInitialAnswer] = useState('')
   const [showConfirmation, setShowConfirmation] = useState(false)
+  const [showInboxSuccess, setShowInboxSuccess] = useState(false)
+  const [inboxTaskName, setInboxTaskName] = useState('')
 
   const q = currentProjectQuestions[idx]
 
@@ -57,7 +64,12 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
     setAnsweredQuestions([])
     setCurrentAnswer('')
     setLastWeekAnswer('')
+    setSelectedMood(null)
+    setSelectedYesNo(null)
+    setDatePreview(null)
+    setInitialAnswer('')
     setShowConfirmation(false) // Reset confirmation overlay when project changes
+    setShowInboxSuccess(false) // Reset inbox success overlay when project changes
     // Load context-aware questions for the current project
     loadProjectQuestions(project)
     // Auto-load tasks for the current project
@@ -97,6 +109,16 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
     // This will trigger a re-render when remaining changes
   }, [remaining])
 
+  // Date parsing preview for text-parsed questions
+  useEffect(() => {
+    if (q?.type === 'text-parsed' && currentAnswer.trim()) {
+      const preview = describeNaturalDate(currentAnswer)
+      setDatePreview(preview)
+    } else {
+      setDatePreview(null)
+    }
+  }, [currentAnswer, q?.type])
+
   // Enhanced keyboard navigation
   useEffect(() => {
     if (!project || !q) return // Guard against undefined
@@ -115,6 +137,14 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
         
         // Auto-advance after setting engagement
         moveToNextQuestion()
+        return
+      }
+
+      // Handle Y and N keys for yes/no questions
+      if (q.type === 'yes-no' && ['y', 'Y', 'n', 'N'].includes(e.key)) {
+        e.preventDefault()
+        const isYes = e.key.toLowerCase() === 'y'
+        handleYesNoChange(isYes)
         return
       }
 
@@ -165,6 +195,20 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
     setLastWeekAnswer(prev?.text ?? '')
     setCurrentAnswer(prev?.text ?? '')
     setLastWeekStatus(prev?.status ?? 'New')
+    
+    // Load initial answer for followup questions
+    if (q.id.includes('-followup')) {
+      const parentQuestionId = q.id.replace('-followup', '')
+      const initial = await getInitialAnswer(project.id, parentQuestionId)
+      setInitialAnswer(initial?.text ?? '')
+    } else {
+      setInitialAnswer('')
+    }
+    
+    // Reset question-specific state
+    setSelectedMood(null)
+    setSelectedYesNo(null)
+    setDatePreview(null)
   }
 
   const startOfISOWeek = () => {
@@ -185,11 +229,18 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
       .filter(a => a.weekOf === currentWeek)
       .first()
     
+    // Parse date for text-parsed questions
+    let parsedDate: string | undefined
+    if (q.type === 'text-parsed' && text.trim()) {
+      parsedDate = parseNaturalDate(text) || undefined
+    }
+    
     const draft: AnswerDraft = {
       id: existingThisWeek?.id || crypto.randomUUID(), // Reuse ID if exists
       projectID: project.id, questionID: q.id,
       text, weekOf: currentWeek,
-      status: (!prev || prev.text === text) ? 'CarriedForward' : 'Updated'
+      status: (!prev || prev.text === text) ? 'CarriedForward' : 'Updated',
+      parsedDate
     }
     await setDraft(draft)
     
@@ -236,6 +287,46 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
       // Add new answer
       setAnsweredQuestions([...answeredQuestions, { id: q.id, prompt: q.prompt, answer: `Engagement: ${score}/3`, status: 'answered' }])
     }
+  }
+
+  async function handleYesNoChange(value: boolean) {
+    if (!project || !q) return // Guard against undefined
+    
+    setSelectedYesNo(value)
+    const textValue = value ? 'yes' : 'no'
+    setCurrentAnswer(textValue)
+    
+    // Get existing answer for this week to reuse its ID (avoid creating duplicates)
+    const currentWeek = startOfISOWeek()
+    const existingThisWeek = await db.answers
+      .where('[projectID+questionID]')
+      .equals([project.id, q.id])
+      .filter(a => a.weekOf === currentWeek)
+      .first()
+    
+    const draft: AnswerDraft = {
+      id: existingThisWeek?.id || crypto.randomUUID(), // Reuse ID if exists
+      projectID: project.id, questionID: q.id,
+      text: textValue, weekOf: currentWeek, status: 'Updated'
+    }
+    await setDraft(draft)
+    
+    // Update answered questions list
+    const existingIndex = answeredQuestions.findIndex(aq => aq.id === q.id)
+    if (existingIndex >= 0) {
+      // Update existing answer
+      const updated = [...answeredQuestions]
+      updated[existingIndex] = { id: q.id, prompt: q.prompt, answer: textValue, status: 'answered', draftStatus: draft.status }
+      setAnsweredQuestions(updated)
+    } else {
+      // Add new answer
+      setAnsweredQuestions([...answeredQuestions, { id: q.id, prompt: q.prompt, answer: textValue, status: 'answered', draftStatus: draft.status }])
+    }
+    
+    // Auto-advance after selection
+    setTimeout(() => {
+      moveToNextQuestion()
+    }, 500)
   }
 
   // Function to mark a question as skipped
@@ -322,6 +413,40 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
     }
   }
 
+  // Function to create inbox task
+  async function handleCreateInboxTask(taskName: string) {
+    try {
+      // Check if Electron API is available
+      if (!window.electronAPI?.omnifocus?.createInboxTask) {
+        throw new Error('Cannot create inbox task: Electron API not available. This feature requires the desktop app.')
+      }
+
+      // Create the inbox task
+      const result = await window.electronAPI.omnifocus.createInboxTask(taskName)
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to create inbox task')
+      }
+
+      console.log(`✅ Inbox task created: ${taskName}`)
+      
+      // Show success overlay
+      setInboxTaskName(taskName)
+      setShowInboxSuccess(true)
+      
+      // Auto-hide after 2 seconds
+      setTimeout(() => {
+        setShowInboxSuccess(false)
+      }, 2000)
+      
+    } catch (error) {
+      console.error('Error creating inbox task:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
+      alert(`❌ Failed to create inbox task: ${errorMessage}`)
+      throw error // Re-throw so QuickInboxCapture can handle it
+    }
+  }
+
   // Safety checks AFTER all hooks have been called
   if (!project) {
     return <div className="focus-screen">Loading project...</div>
@@ -404,17 +529,29 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
         <div className="focus-main">
         <h1 className="main-question">{q.prompt}</h1>
         
-        {lastWeekAnswer && (
-          <div className="last-week-section">
-            <div className="last-week-label">LAST WEEK</div>
-            <div className="last-week-answer">
-              {lastWeekStatus === 'CarriedForward' && '[u] '}{lastWeekAnswer}
-            </div>
-            <div className="last-week-edit-hint">(CLICK OR ENTER TO EDIT)</div>
+        {/* Context Answers Display */}
+        {(lastWeekAnswer || initialAnswer) && (
+          <div className="context-answers-section">
+            {initialAnswer && (
+              <div className="initial-answer-section">
+                <div className="initial-answer-label">INITIAL ANSWER</div>
+                <div className="initial-answer-text">{initialAnswer}</div>
+              </div>
+            )}
+            {lastWeekAnswer && (
+              <div className="last-week-section">
+                <div className="last-week-label">LAST WEEK</div>
+                <div className="last-week-answer">
+                  {lastWeekStatus === 'CarriedForward' && '[u] '}{lastWeekAnswer}
+                </div>
+                <div className="last-week-edit-hint">(CLICK OR ENTER TO EDIT)</div>
+              </div>
+            )}
           </div>
         )}
 
-        {q.type === 'text' ? (
+        {/* Question Input Based on Type */}
+        {q.type === 'text' || q.type === 'text-parsed' ? (
           <>
             <textarea
               className="answer-input"
@@ -427,9 +564,37 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
                   moveToNextQuestion()
                 }
               }}
-              placeholder="Type your answer here... (Press Enter to go to next question)"
+              placeholder={q.type === 'text-parsed' ? "Type a date like 'next month', 'Q2 2024', 'tomorrow', 'in 2 weeks'..." : "Type your answer here... (Press Enter to go to next question)"}
             />
+            {q.type === 'text-parsed' && (
+              <div style={{ fontSize: '0.8em', marginTop: '8px' }}>
+                {datePreview ? (
+                  <div style={{ color: '#4CAF50', fontWeight: '500' }}>📅 Parsed as: {datePreview}</div>
+                ) : currentAnswer.trim() ? (
+                  <div style={{ color: '#FF9800', opacity: 0.8 }}>⚠️ Could not parse date from: "{currentAnswer}"</div>
+                ) : (
+                  <div style={{ opacity: 0.7 }}>💡 Try: "next month", "Q2 2024", "tomorrow", "in 2 weeks"</div>
+                )}
+              </div>
+            )}
           </>
+        ) : q.type === 'yes-no' ? (
+          <div className="yes-no-selector">
+            <div className="yes-no-options">
+              <button
+                className={`yes-no-button ${selectedYesNo === true ? 'selected' : ''}`}
+                onClick={() => handleYesNoChange(true)}
+              >
+                Yes
+              </button>
+              <button
+                className={`yes-no-button ${selectedYesNo === false ? 'selected' : ''}`}
+                onClick={() => handleYesNoChange(false)}
+              >
+                No
+              </button>
+            </div>
+          </div>
         ) : (
           <div className="mood-selector">
             <div className="mood-prompt">How do you feel about this project?</div>
@@ -541,6 +706,33 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
         }}>
           ✓ Project Reviewed
         </div>
+      </div>
+    )}
+    
+    {/* Floating Inbox Button */}
+    <FloatingInboxButton onCreateInboxTask={handleCreateInboxTask} />
+    
+    {/* Inbox Success Overlay */}
+    {showInboxSuccess && (
+      <div style={{
+        position: 'fixed',
+        top: '50%',
+        left: '50%',
+        transform: 'translate(-50%, -50%)',
+        background: 'rgba(76, 175, 80, 0.15)',
+        backdropFilter: 'blur(20px)',
+        border: '2px solid rgba(76, 175, 80, 0.3)',
+        borderRadius: '16px',
+        padding: '16px 24px',
+        textAlign: 'center',
+        fontSize: '1.1em',
+        fontWeight: '600',
+        color: 'white',
+        boxShadow: '0 8px 32px rgba(76, 175, 80, 0.2)',
+        zIndex: 10001,
+        animation: 'fadeIn 0.3s ease-out'
+      }}>
+        ✓ Added "{inboxTaskName}" to Inbox
       </div>
     )}
     

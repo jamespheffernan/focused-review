@@ -8,6 +8,7 @@ import * as chrono from 'chrono-node';
  * - "tomorrow" -> "2025-10-10"
  * - "next friday" -> "2025-10-11"
  * - "in 2 weeks" -> "2025-10-23"
+ * - "monday" (on thursday) -> "next monday" -> "2025-10-13"
  * 
  * @param text Natural language date string
  * @returns ISO date string (YYYY-MM-DD) or null if parsing fails
@@ -20,7 +21,23 @@ export function parseNaturalDate(text: string): string | null {
   try {
     const result = chrono.parseDate(text);
     if (result) {
-      // Format as YYYY-MM-DD for HTML date input
+      // Check if date is in the past (before today at midnight)
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      if (result < today) {
+        // Retry with "next " prepended to get a future date
+        const retryResult = chrono.parseDate(`next ${text}`);
+        if (retryResult && retryResult >= today) {
+          // Use the future date instead
+          const year = retryResult.getFullYear();
+          const month = String(retryResult.getMonth() + 1).padStart(2, '0');
+          const day = String(retryResult.getDate()).padStart(2, '0');
+          return `${year}-${month}-${day}`;
+        }
+      }
+      
+      // Return original result (either future date or retry failed)
       const year = result.getFullYear();
       const month = String(result.getMonth() + 1).padStart(2, '0');
       const day = String(result.getDate()).padStart(2, '0');

@@ -79,8 +79,14 @@ function createWindow() {
     mainWindow.webContents.openDevTools()
   } else {
     // Use loadFile for proper asset loading in packaged app
+    // In production, dist is in the app's resources
     const indexPath = path.join(__dirname, '../dist/index.html')
+    console.log('Loading app from:', indexPath)
+    console.log('__dirname:', __dirname)
+    console.log('File exists:', require('fs').existsSync(indexPath))
     mainWindow.loadFile(indexPath)
+      .then(() => console.log('✅ App loaded successfully'))
+      .catch(err => console.error('❌ Failed to load app:', err))
   }
 
   // Show window when ready
@@ -709,8 +715,9 @@ if (!targetProject) {
   throw new Error('Project not found');
 }
 
-// Mark as reviewed using the proper API method
-targetProject.markReviewed();
+// Mark as reviewed by setting lastReviewDate directly
+// Note: markReviewed() method throws "Can't convert types" error in OF4
+targetProject.lastReviewDate = new Date();
 
 // Return success with updated dates
 JSON.stringify({
@@ -792,7 +799,7 @@ ipcMain.handle('omnifocus:launch', async () => {
 // IPC handler for setting context on a task
 ipcMain.handle('omnifocus:set-task-context', async (event, taskId, contextName) => {
   try {
-    console.log(`Setting context "${contextName}" on task ${taskId}`)
+    console.log(`[OmniFocus] set-task-context called for task ${taskId} with context "${contextName}"`)
     
     // First check if OmniFocus is running
     const checkScript = `tell application "System Events" to return (name of processes) contains "OmniFocus"`
@@ -802,90 +809,26 @@ ipcMain.handle('omnifocus:set-task-context', async (event, taskId, contextName) 
       return { success: false, error: 'OmniFocus is not running. Please start OmniFocus and try again.' }
     }
     
-    // Create temporary JXA script for setting context
-    const tempJxaPath = path.join(require('os').tmpdir(), 'set_task_context_jxa.js')
-    const jxaScript = `const of = Application('OmniFocus');
-const doc = of.defaultDocument;
-
-// Find the task by ID
-const tasks = doc.flattenedTasks();
-let targetTask = null;
-
-for (let i = 0; i < tasks.length; i++) {
-  if (tasks[i].id() === '${taskId}') {
-    targetTask = tasks[i];
-    break;
-  }
-}
-
-if (!targetTask) {
-  throw new Error('Task not found');
-}
-
-// Find or create tag (OmniFocus 4 renamed contexts to tags)
-const tags = doc.flattenedTags();
-let targetTag = null;
-
-for (let i = 0; i < tags.length; i++) {
-  if (tags[i].name() === '${contextName.replace(/'/g, "\\'")}') {
-    targetTag = tags[i];
-    break;
-  }
-}
-
-// Create tag if it doesn't exist
-if (!targetTag) {
-  targetTag = of.Tag({
-    name: '${contextName.replace(/'/g, "\\'")}'
-  });
-  doc.tags.push(targetTag);
-}
-
-// Add tag to task using the proper API method
-// First remove existing primary tag if any, then add the new one
-const existingPrimaryTag = targetTask.primaryTag();
-if (existingPrimaryTag) {
-  targetTask.removeTag(existingPrimaryTag);
-}
-targetTask.addTag(targetTag);
-
-// Return success
-JSON.stringify({
-  success: true,
-  taskId: targetTask.id(),
-  contextName: targetTag.name()
-});`
+    // OPTIMIZATION: Skip JXA entirely for context/tag setting - OmniFocus 4 JXA can't handle them
+    // Go directly to AppleScript for better performance
+    console.log('[OmniFocus] Using direct AppleScript for context setting (JXA not supported in OmniFocus 4)')
     
-    // Write the JXA script to temporary file
-    await fs.writeFile(tempJxaPath, jxaScript)
-    
-    // Execute the JXA script
-    const { stdout: resultOutput, stderr } = await execAsync(`osascript -l JavaScript "${tempJxaPath}"`)
-    
-    // Clean up temporary file
     try {
-      await fs.unlink(tempJxaPath)
-    } catch (cleanupError) {
-      console.warn('Failed to clean up temporary JXA file:', cleanupError.message)
-    }
-    
-    if (stderr) {
-      console.error('JXA stderr:', stderr)
-      return { success: false, error: stderr }
-    }
-    
-    if (!resultOutput || resultOutput.trim() === '') {
-      return { success: false, error: 'No output from JXA script' }
-    }
-    
-    // Parse the JSON result
-    try {
-      const result = JSON.parse(resultOutput.trim())
-      console.log('Context set successfully:', result)
-      return result
-    } catch (parseError) {
-      console.error('Failed to parse JXA output:', parseError)
-      return { success: false, error: 'Failed to parse result' }
+      const appleScript = `tell application "OmniFocus"
+  tell default document
+    set theTask to first flattened task whose id is "${taskId}"
+    set theTag to first flattened tag whose name is "${contextName.replace(/'/g, "\\'")}"
+    set primary tag of theTask to theTag
+  end tell
+end tell`
+      
+      console.log('[OmniFocus] Setting context to:', contextName)
+      await execAsync(`osascript -e '${appleScript.replace(/'/g, "'\\''")}'`)
+      console.log('Context set via AppleScript')
+      return { success: true, taskId, contextName }
+    } catch (asError) {
+      console.error('AppleScript context setting failed:', asError)
+      return { success: false, error: `AppleScript failed: ${asError.message}` }
     }
     
   } catch (error) {
@@ -907,71 +850,52 @@ ipcMain.handle('omnifocus:set-task-due-date', async (event, taskId, dueDate) => 
       return { success: false, error: 'OmniFocus is not running. Please start OmniFocus and try again.' }
     }
     
-    // Create temporary JXA script for setting due date
-    const tempJxaPath = path.join(require('os').tmpdir(), 'set_task_due_date_jxa.js')
-    const dueDateValue = dueDate ? `new Date('${dueDate}')` : 'null'
-    const jxaScript = `const of = Application('OmniFocus');
-const doc = of.defaultDocument;
-
-// Find the task by ID
-const tasks = doc.flattenedTasks();
-let targetTask = null;
-
-for (let i = 0; i < tasks.length; i++) {
-  if (tasks[i].id() === '${taskId}') {
-    targetTask = tasks[i];
-    break;
-  }
-}
-
-if (!targetTask) {
-  throw new Error('Task not found');
-}
-
-// Set due date using the proper API method (or clear it if null)
-if (${dueDateValue} !== null) {
-  targetTask.setDueDate(${dueDateValue});
-} else {
-  targetTask.clearDueDate();
-}
-
-// Return success
-JSON.stringify({
-  success: true,
-  taskId: targetTask.id(),
-  dueDate: targetTask.dueDate() ? targetTask.dueDate().toISOString() : null
-});`
+    // OPTIMIZATION: Skip JXA entirely for due dates - OmniFocus 4 JXA can't handle them
+    // Go directly to AppleScript for better performance
+    console.log('[OmniFocus] Using direct AppleScript for due date (JXA not supported in OmniFocus 4)')
     
-    // Write the JXA script to temporary file
-    await fs.writeFile(tempJxaPath, jxaScript)
-    
-    // Execute the JXA script
-    const { stdout: resultOutput, stderr } = await execAsync(`osascript -l JavaScript "${tempJxaPath}"`)
-    
-    // Clean up temporary file
     try {
-      await fs.unlink(tempJxaPath)
-    } catch (cleanupError) {
-      console.warn('Failed to clean up temporary JXA file:', cleanupError.message)
-    }
-    
-    if (stderr) {
-      console.error('JXA stderr:', stderr)
-      return { success: false, error: stderr }
-    }
-    
-    if (!resultOutput || resultOutput.trim() === '') {
-      return { success: false, error: 'No output from JXA script' }
-    }
-    
-    // Parse the JSON result
-    try {
-      const result = JSON.parse(resultOutput.trim())
-      console.log('Due date set successfully:', result)
-      return result
-    } catch (parseError) {
-      console.error('Failed to parse JXA output:', parseError)
-      return { success: false, error: 'Failed to parse result' }
+      if (dueDate) {
+        // Format date for AppleScript - preserve the exact time from ISO string
+        const dateObj = new Date(dueDate)
+        const dateStr = dateObj.toLocaleString('en-US', { 
+          month: 'long', 
+          day: 'numeric', 
+          year: 'numeric', 
+          hour: 'numeric', 
+          minute: '2-digit',
+          hour12: true 
+        })
+        
+        console.log('[OmniFocus] Setting due date:', dateStr)
+        
+        const appleScript = `tell application "OmniFocus"
+  tell default document
+    set theTask to first flattened task whose id is "${taskId}"
+    set due date of theTask to date "${dateStr}"
+  end tell
+end tell`
+        
+        await execAsync(`osascript -e '${appleScript.replace(/'/g, "'\\''")}'`)
+        console.log('Due date set via AppleScript')
+        return { success: true, taskId, dueDate }
+      } else {
+        console.log('[OmniFocus] Clearing due date')
+        
+        const appleScript = `tell application "OmniFocus"
+  tell default document
+    set theTask to first flattened task whose id is "${taskId}"
+    set due date of theTask to missing value
+  end tell
+end tell`
+        
+        await execAsync(`osascript -e '${appleScript.replace(/'/g, "'\\''")}'`)
+        console.log('Due date cleared via AppleScript')
+        return { success: true, taskId, dueDate: null }
+      }
+    } catch (asError) {
+      console.error('AppleScript due date operation failed:', asError)
+      return { success: false, error: `AppleScript failed: ${asError.message}` }
     }
     
   } catch (error) {
@@ -1069,8 +993,43 @@ JSON.stringify({
 // IPC handler for updating task properties (comprehensive update)
 ipcMain.handle('omnifocus:update-task', async (event, taskId, updates) => {
   try {
-    console.log(`[OmniFocus] Updating task ${taskId} with:`, JSON.stringify(updates))
+    // Write debug info to file for compiled app debugging
+    const debugLog = `
+=== TASK UPDATE DEBUG ${new Date().toISOString()} ===
+Task ID: ${taskId}
+Full updates: ${JSON.stringify(updates, null, 2)}
+updates.context: ${updates.context}
+updates.completed: ${updates.completed}
+updates.completed type: ${typeof updates.completed}
+updates.completed === undefined: ${updates.completed === undefined}
+updates.completed === false: ${updates.completed === false}
+updates.completed === null: ${updates.completed === null}
+"completed" in updates: ${"completed" in updates}
+"context" in updates: ${"context" in updates}
+Context condition: ${updates.context !== undefined && (updates.completed === undefined || updates.completed === false)}
+=== END DEBUG ===
+`;
     
+    try {
+      require('fs').appendFileSync(require('path').join(require('os').homedir(), 'omnifocus-debug.log'), debugLog);
+    } catch (e) {
+      console.error('Failed to write debug log:', e);
+    }
+    
+    console.log(`[OmniFocus] === TASK UPDATE DEBUG ===`)
+    console.log(`[OmniFocus] Task ID: ${taskId}`)
+    console.log(`[OmniFocus] Full updates object:`, JSON.stringify(updates, null, 2))
+    console.log(`[OmniFocus] updates.context:`, updates.context)
+    console.log(`[OmniFocus] updates.completed:`, updates.completed)
+    console.log(`[OmniFocus] updates.completed type:`, typeof updates.completed)
+    console.log(`[OmniFocus] updates.completed === undefined:`, updates.completed === undefined)
+    console.log(`[OmniFocus] updates.completed === false:`, updates.completed === false)
+    console.log(`[OmniFocus] updates.completed === null:`, updates.completed === null)
+    console.log(`[OmniFocus] "completed" in updates:`, "completed" in updates)
+    console.log(`[OmniFocus] "context" in updates:`, "context" in updates)
+    console.log(`[OmniFocus] Context condition check:`, updates.context !== undefined && (updates.completed === undefined || updates.completed === false))
+    console.log(`[OmniFocus] === END DEBUG ===`)
+
     // First check if OmniFocus is running
     const checkScript = `tell application "System Events" to return (name of processes) contains "OmniFocus"`
     const { stdout: isRunningOutput } = await execAsync(`osascript -e '${checkScript}'`)
@@ -1082,9 +1041,9 @@ ipcMain.handle('omnifocus:update-task', async (event, taskId, updates) => {
     // Build JXA script dynamically based on what needs to be updated
     const tempJxaPath = path.join(require('os').tmpdir(), 'update_task_jxa.js')
     
-    // Build update logic
+    // Build update logic and completion logic
     let updateLogic = ''
-    let completionLogic = '' // Handle completion separately at the end
+    let completionLogic = ''
     
     // Ignore completedDate if it's passed - it's read-only in OmniFocus 4
     // The markComplete() method sets it automatically
@@ -1103,66 +1062,112 @@ ipcMain.handle('omnifocus:update-task', async (event, taskId, updates) => {
       }
     }
     
-    // Only update other properties if we're not also changing completion state
-    // In OmniFocus 4, you can't modify properties and completion in the same operation
-    if (updates.completed === undefined) {
+    // OmniFocus 4 constraints:
+    // 1. Cannot update completion AND other properties in same operation
+    // 2. Cannot update context/tags AND other properties in same operation
+    // Only update if we're not changing completion state or context
+    if (updates.completed === undefined && updates.context === undefined) {
       if (updates.name !== undefined) {
+        updateLogic += `console.log('[JXA] Setting name to:', '${updates.name.replace(/'/g, "\\'")}');\n`
         updateLogic += `targetTask.name = '${updates.name.replace(/'/g, "\\'")}';\n`
+        updateLogic += `console.log('[JXA] Name set successfully');\n`
       }
       
       if (updates.note !== undefined) {
+        updateLogic += `console.log('[JXA] Setting note');\n`
         updateLogic += `targetTask.note = '${(updates.note || '').replace(/'/g, "\\'")}';\n`
+        updateLogic += `console.log('[JXA] Note set successfully');\n`
       }
       
       if (updates.flagged !== undefined) {
+        updateLogic += `console.log('[JXA] Setting flagged to:', ${updates.flagged});\n`
         updateLogic += `targetTask.flagged = ${updates.flagged};\n`
+        updateLogic += `console.log('[JXA] Flagged set successfully');\n`
       }
       
-      if (updates.dueDate !== undefined) {
-        if (updates.dueDate) {
-          updateLogic += `targetTask.setDueDate(new Date('${updates.dueDate}'));\n`
-        } else {
-          updateLogic += `targetTask.clearDueDate();\n`
-        }
-      }
+      // Note: Due date updates are now handled directly with AppleScript below
+      // This section is kept for other properties that can be updated via JXA
+    }
+    
+    // OPTIMIZATION: Handle context/tag updates directly with AppleScript for better performance
+    const contextCondition = updates.context !== undefined && (updates.completed === undefined || updates.completed === false);
+    
+    if (contextCondition) {
+      console.log('[OmniFocus] Handling context update directly with AppleScript (JXA not supported in OmniFocus 4)')
       
-      if (updates.context !== undefined) {
+      try {
         if (updates.context) {
-          updateLogic += `
-// Find or create tag (OmniFocus 4 renamed contexts to tags)
-const tags = doc.flattenedTags();
-let targetTag = null;
-
-for (let i = 0; i < tags.length; i++) {
-  if (tags[i].name() === '${updates.context.replace(/'/g, "\\'")}') {
-    targetTag = tags[i];
-    break;
-  }
-}
-
-if (!targetTag) {
-  targetTag = of.Tag({
-    name: '${updates.context.replace(/'/g, "\\'")}'
-  });
-  doc.tags.push(targetTag);
-}
-
-// Use proper API methods to manage tags
-const existingPrimaryTag = targetTask.primaryTag();
-if (existingPrimaryTag) {
-  targetTask.removeTag(existingPrimaryTag);
-}
-targetTask.addTag(targetTag);
-`
+          console.log('[OmniFocus] Setting context to:', updates.context)
+          const appleScript = `tell application "OmniFocus"
+  tell default document
+    set theTask to first flattened task whose id is "${taskId}"
+    set theTag to first flattened tag whose name is "${updates.context.replace(/'/g, "\\'")}"
+    set primary tag of theTask to theTag
+  end tell
+end tell`
+          
+          await execAsync(`osascript -e '${appleScript.replace(/'/g, "'\\''")}'`)
+          console.log('[OmniFocus] Context set via AppleScript')
         } else {
-          updateLogic += `
-// Remove primary tag if one exists
-const existingPrimaryTag = targetTask.primaryTag();
-if (existingPrimaryTag) {
-  targetTask.removeTag(existingPrimaryTag);
-}
-`
+          console.log('[OmniFocus] Clearing context')
+          const appleScript = `tell application "OmniFocus"
+  tell default document
+    set theTask to first flattened task whose id is "${taskId}"
+    set primary tag of theTask to missing value
+  end tell
+end tell`
+          
+          await execAsync(`osascript -e '${appleScript.replace(/'/g, "'\\''")}'`)
+          console.log('[OmniFocus] Context cleared via AppleScript')
         }
+      } catch (asError) {
+        console.error('[OmniFocus] AppleScript context update failed:', asError)
+        return { success: false, error: `Context update failed: ${asError.message}` }
+      }
+    }
+    
+    // OPTIMIZATION: Handle due date updates directly with AppleScript for better performance
+    if (updates.dueDate !== undefined && updates.context === undefined) {
+      console.log('[OmniFocus] Handling due date update directly with AppleScript (JXA not supported in OmniFocus 4)')
+      
+      try {
+        if (updates.dueDate) {
+          // Format date for AppleScript - preserve the exact time from ISO string
+          const dateObj = new Date(updates.dueDate)
+          const dateStr = dateObj.toLocaleString('en-US', { 
+            month: 'long', 
+            day: 'numeric', 
+            year: 'numeric', 
+            hour: 'numeric', 
+            minute: '2-digit',
+            hour12: true 
+          })
+          
+          console.log('[OmniFocus] Setting due date:', dateStr)
+          const appleScript = `tell application "OmniFocus"
+  tell default document
+    set theTask to first flattened task whose id is "${taskId}"
+    set due date of theTask to date "${dateStr}"
+  end tell
+end tell`
+          
+          await execAsync(`osascript -e '${appleScript.replace(/'/g, "'\\''")}'`)
+          console.log('[OmniFocus] Due date set via AppleScript')
+        } else {
+          console.log('[OmniFocus] Clearing due date')
+          const appleScript = `tell application "OmniFocus"
+  tell default document
+    set theTask to first flattened task whose id is "${taskId}"
+    set due date of theTask to missing value
+  end tell
+end tell`
+          
+          await execAsync(`osascript -e '${appleScript.replace(/'/g, "'\\''")}'`)
+          console.log('[OmniFocus] Due date cleared via AppleScript')
+        }
+      } catch (asError) {
+        console.error('[OmniFocus] AppleScript due date update failed:', asError)
+        return { success: false, error: `Due date update failed: ${asError.message}` }
       }
     }
     
@@ -1204,12 +1209,80 @@ JSON.stringify({
     await fs.writeFile(tempJxaPath, jxaScript)
     
     // Debug: Log the generated JXA script
+    const jxaDebug = `
+=== GENERATED JXA SCRIPT ===
+Script length: ${jxaScript.length}
+updateLogic was populated with ${updateLogic.length} chars
+completionLogic was populated with ${completionLogic.length} chars
+First 500 chars of JXA script:
+${jxaScript.substring(0, 500)}
+...
+Last 500 chars of JXA script:
+${jxaScript.substring(jxaScript.length - 500)}
+=== END JXA SCRIPT ===
+`;
+    
+    try {
+      require('fs').appendFileSync(require('path').join(require('os').homedir(), 'omnifocus-debug.log'), jxaDebug);
+    } catch (e) {}
+    
     console.log('[OmniFocus] === Generated JXA Script ===')
     console.log(jxaScript)
     console.log('[OmniFocus] === End JXA Script ===')
     
     // Execute the JXA script
-    const { stdout: resultOutput, stderr } = await execAsync(`osascript -l JavaScript "${tempJxaPath}"`)
+    const execDebug = `
+=== EXECUTING JXA SCRIPT ===
+Script path: ${tempJxaPath}
+About to execute...
+`;
+    
+    try {
+      require('fs').appendFileSync(require('path').join(require('os').homedir(), 'omnifocus-debug.log'), execDebug);
+    } catch (e) {}
+    
+    let resultOutput, stderr;
+    try {
+      const result = await execAsync(`osascript -l JavaScript "${tempJxaPath}"`)
+      resultOutput = result.stdout
+      stderr = result.stderr
+      
+      const execSuccessLog = `
+JXA execution completed without throwing
+stdout length: ${resultOutput ? resultOutput.length : 0}
+stderr length: ${stderr ? stderr.length : 0}
+`;
+      
+      try {
+        require('fs').appendFileSync(require('path').join(require('os').homedir(), 'omnifocus-debug.log'), execSuccessLog);
+      } catch (e) {}
+    } catch (execError) {
+      const execErrorLog = `
+JXA execution threw error:
+Error message: ${execError.message}
+Error code: ${execError.code}
+Error stdout: ${execError.stdout}
+Error stderr: ${execError.stderr}
+`;
+      
+      try {
+        require('fs').appendFileSync(require('path').join(require('os').homedir(), 'omnifocus-debug.log'), execErrorLog);
+      } catch (e) {}
+      
+      // Re-throw the error since we now handle context and due date operations directly
+      throw execError
+    }
+    
+    const execResult = `
+=== JXA EXECUTION RESULT ===
+stdout: ${resultOutput}
+stderr: ${stderr}
+=== END EXECUTION RESULT ===
+`;
+    
+    try {
+      require('fs').appendFileSync(require('path').join(require('os').homedir(), 'omnifocus-debug.log'), execResult);
+    } catch (e) {}
     
     // Clean up temporary file
     try {
@@ -1439,6 +1512,76 @@ JSON.stringify({
     
   } catch (error) {
     console.error('Error creating task:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('omnifocus:create-inbox-task', async (event, taskName) => {
+  try {
+    console.log(`Creating inbox task "${taskName}"`)
+    
+    // First check if OmniFocus is running
+    const checkScript = `tell application "System Events" to return (name of processes) contains "OmniFocus"`
+    const { stdout: isRunningOutput } = await execAsync(`osascript -e '${checkScript}'`)
+    
+    if (!isRunningOutput.trim().toLowerCase().includes('true')) {
+      return { success: false, error: 'OmniFocus is not running. Please start OmniFocus and try again.' }
+    }
+    
+    // Create temporary JXA script for inbox task creation
+    const tempJxaPath = path.join(require('os').tmpdir(), 'create_inbox_task_jxa.js')
+    const jxaScript = `const of = Application('OmniFocus');
+const doc = of.defaultDocument;
+
+// Create the new inbox task
+const newTask = of.Task({
+  name: '${taskName.replace(/'/g, "\\'")}'
+});
+
+// Add task to inbox (no project assignment)
+doc.inboxTasks.push(newTask);
+
+// Return success with the new task ID
+JSON.stringify({
+  success: true,
+  taskId: newTask.id(),
+  taskName: newTask.name()
+});`
+    
+    // Write the JXA script to temporary file
+    await fs.writeFile(tempJxaPath, jxaScript)
+    
+    // Execute the JXA script
+    const { stdout: resultOutput, stderr } = await execAsync(`osascript -l JavaScript "${tempJxaPath}"`)
+    
+    // Clean up temporary file
+    try {
+      await fs.unlink(tempJxaPath)
+    } catch (cleanupError) {
+      console.warn('Failed to clean up temporary JXA file:', cleanupError.message)
+    }
+    
+    if (stderr) {
+      console.error('JXA stderr:', stderr)
+      return { success: false, error: stderr }
+    }
+    
+    if (!resultOutput || resultOutput.trim() === '') {
+      return { success: false, error: 'No output from JXA script' }
+    }
+    
+    // Parse the JSON result
+    try {
+      const result = JSON.parse(resultOutput.trim())
+      console.log('Inbox task created successfully:', result)
+      return result
+    } catch (parseError) {
+      console.error('Failed to parse JXA output:', parseError)
+      return { success: false, error: 'Failed to parse result' }
+    }
+    
+  } catch (error) {
+    console.error('Error creating inbox task:', error)
     return { success: false, error: error.message }
   }
 })
@@ -1828,6 +1971,14 @@ ipcMain.handle('notion:move-to-database', async (event, ofProjectId, targetDatab
       properties['Sync Hash'] = originalPage.properties['Sync Hash']
     }
     
+    // Step 4: Fetch all blocks from the original page
+    console.log(`📄 Fetching all blocks from original page...`)
+    const blocksResponse = await notion.blocks.children.list({
+      block_id: pageId
+    })
+    
+    console.log(`📄 Found ${blocksResponse.results.length} blocks to copy`)
+    
     // Create new page in target database
     const newPage = await notion.pages.create({
       parent: { database_id: targetDatabaseId },
@@ -1835,6 +1986,27 @@ ipcMain.handle('notion:move-to-database', async (event, ofProjectId, targetDatab
     })
     
     console.log(`✅ Created copy in target database: ${newPage.id}`)
+    
+    // Step 5: Copy all blocks to the new page
+    if (blocksResponse.results.length > 0) {
+      console.log(`📄 Copying ${blocksResponse.results.length} blocks to new page...`)
+      
+      // Notion API limits to 100 blocks per request, so we need to batch them
+      const batchSize = 100
+      const blocks = blocksResponse.results
+      
+      for (let i = 0; i < blocks.length; i += batchSize) {
+        const batch = blocks.slice(i, i + batchSize)
+        console.log(`📄 Copying batch ${Math.floor(i / batchSize) + 1} (${batch.length} blocks)`)
+        
+        await notion.blocks.children.append({
+          block_id: newPage.id,
+          children: batch
+        })
+      }
+      
+      console.log(`✅ Successfully copied all blocks to new page`)
+    }
     
     // Archive the original page from Active Projects
     await notion.pages.update({ page_id: pageId, archived: true })
@@ -1852,6 +2024,201 @@ ipcMain.handle('notion:move-to-database', async (event, ofProjectId, targetDatab
     return {
       success: false,
       error: error.message || 'Unknown error moving page'
+    }
+  }
+})
+
+// Append tasks log to a Notion page before moving to Someday/Maybe
+ipcMain.handle('notion:append-tasks-log', async (event, pageId, tasks) => {
+  try {
+    console.log(`Appending tasks log to page ${pageId} with ${tasks.length} tasks`)
+    
+    // Check if Notion sync is configured
+    const notionToken = process.env.NOTION_TOKEN
+    
+    if (!notionToken) {
+      console.log('⏭️ Notion not configured, skipping tasks log')
+      return {
+        success: false,
+        error: 'Notion not configured. Set NOTION_TOKEN environment variable.'
+      }
+    }
+    
+    if (!pageId || !tasks || !Array.isArray(tasks)) {
+      return {
+        success: false,
+        error: 'Invalid parameters: pageId and tasks array required'
+      }
+    }
+    
+    // Import Notion client
+    const { Client } = await import('@notionhq/client')
+    const notion = new Client({ auth: notionToken })
+    
+    // Format tasks as Notion blocks
+    const blocks = []
+    
+    // Add heading
+    blocks.push({
+      object: 'block',
+      type: 'heading_2',
+      heading_2: {
+        rich_text: [{ type: 'text', text: { content: 'Tasks at time of archiving' } }]
+      }
+    })
+    
+    // Add timestamp
+    const now = new Date()
+    const timestamp = now.toLocaleDateString('en-US', { 
+      weekday: 'long', 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    })
+    blocks.push({
+      object: 'block',
+      type: 'paragraph',
+      paragraph: {
+        rich_text: [{ 
+          type: 'text', 
+          text: { content: `Archived on: ${timestamp}` },
+          annotations: { italic: true }
+        }]
+      }
+    })
+    
+    // Add empty line
+    blocks.push({
+      object: 'block',
+      type: 'paragraph',
+      paragraph: { rich_text: [] }
+    })
+    
+    // Add tasks as bulleted list
+    for (const task of tasks) {
+      const taskText = []
+      
+      // Task name
+      taskText.push(task.name || 'Unnamed task')
+      
+      // Add due date if present
+      if (task.dueDate) {
+        const dueDate = new Date(task.dueDate)
+        const formattedDate = dueDate.toLocaleDateString('en-US', { 
+          month: 'short', 
+          day: 'numeric' 
+        })
+        taskText.push(`(Due: ${formattedDate})`)
+      }
+      
+      // Add context if present
+      if (task.context) {
+        taskText.push(`(Context: ${task.context})`)
+      }
+      
+      // Add completion status
+      if (task.completed) {
+        taskText.push('(Completed)')
+      }
+      
+      const taskContent = taskText.join(' ')
+      
+      blocks.push({
+        object: 'block',
+        type: 'bulleted_list_item',
+        bulleted_list_item: {
+          rich_text: [{ type: 'text', text: { content: taskContent } }]
+        }
+      })
+    }
+    
+    // Append blocks to the page
+    await notion.blocks.children.append({
+      block_id: pageId,
+      children: blocks
+    })
+    
+    console.log(`✅ Successfully appended tasks log to page ${pageId}`)
+    
+    return {
+      success: true,
+      message: `Appended ${tasks.length} tasks to page`
+    }
+  } catch (error) {
+    console.error('❌ Error appending tasks log:', error)
+    return {
+      success: false,
+      error: error.message || 'Unknown error appending tasks log'
+    }
+  }
+})
+
+// Find Notion page ID by OmniFocus project ID
+ipcMain.handle('notion:find-page-by-project-id', async (event, projectId) => {
+  try {
+    console.log(`Finding Notion page for project ${projectId}`)
+    
+    // Check if Notion sync is configured
+    const notionToken = process.env.NOTION_TOKEN
+    const projectDb = process.env.NOTION_PROJECT_DB
+    
+    if (!notionToken || !projectDb) {
+      console.log('⏭️ Notion not configured, cannot find page')
+      return {
+        success: false,
+        error: 'Notion not configured. Set NOTION_TOKEN and NOTION_PROJECT_DB environment variables.'
+      }
+    }
+    
+    if (!projectId) {
+      return {
+        success: false,
+        error: 'Project ID is required'
+      }
+    }
+    
+    // Import Notion client
+    const { Client } = await import('@notionhq/client')
+    const notion = new Client({ auth: notionToken })
+    
+    // Query database filtering by OF-ID property
+    const response = await notion.databases.query({
+      database_id: projectDb,
+      filter: {
+        property: 'OF-ID',
+        rich_text: {
+          equals: projectId
+        }
+      },
+      page_size: 1
+    })
+    
+    if (!response.results || response.results.length === 0) {
+      console.log(`📄 No Notion page found for project: ${projectId}`)
+      return {
+        success: true,
+        pageId: null,
+        message: 'No Notion page found for project'
+      }
+    }
+    
+    if (response.results.length > 1) {
+      console.warn(`⚠️ Multiple Notion pages found for project ${projectId}, using first one`)
+    }
+    
+    const pageId = response.results[0].id
+    console.log(`✅ Found Notion page ${pageId} for project ${projectId}`)
+    
+    return {
+      success: true,
+      pageId: pageId,
+      message: 'Notion page found'
+    }
+  } catch (error) {
+    console.error(`❌ Error finding Notion page for project ${projectId}:`, error)
+    return {
+      success: false,
+      error: error.message || 'Unknown error finding Notion page'
     }
   }
 })

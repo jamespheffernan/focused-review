@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie'
-import type { ProjectDTO, AnswerDraft, SessionDTO, TaskDTO, NotionSyncQueueItem } from './types'
+import type { ProjectDTO, AnswerDraft, SessionDTO, TaskDTO, NotionSyncQueueItem, QuestionDTO, QuestionPackageDTO } from './types'
 
 export class ReviewDB extends Dexie {
   projects!: Table<ProjectDTO, string>
@@ -7,6 +7,8 @@ export class ReviewDB extends Dexie {
   sessions!: Table<SessionDTO, string>
   tasks!: Table<TaskDTO, string>
   notionSyncQueue!: Table<NotionSyncQueueItem, string>
+  questions!: Table<QuestionDTO, string>
+  questionPackages!: Table<QuestionPackageDTO, string>
   constructor() {
     super('reviewhud')
     this.version(1).stores({
@@ -49,6 +51,35 @@ export class ReviewDB extends Dexie {
       sessions: 'id, startedAt',
       tasks: 'id, projectId, status, completed, [projectId+status], [projectId+completed], dueDate, flagged, lastModified, syncState',
       notionSyncQueue: 'id, projectId, weekOf, status, nextRetry, [projectId+weekOf]'
+    })
+    // Version 7: Add questions table for legacy support
+    this.version(7).stores({
+      projects: 'id, lastReviewed, status, nextReviewDate',
+      answers: 'id, projectID, questionID, weekOf, [projectID+questionID], [projectID+weekOf]',
+      sessions: 'id, startedAt',
+      tasks: 'id, projectId, status, completed, [projectId+status], [projectId+completed], dueDate, flagged, lastModified, syncState',
+      notionSyncQueue: 'id, projectId, weekOf, status, nextRetry, [projectId+weekOf]',
+      questions: 'id, category, [category+order]'
+    })
+    // Version 8: Add questionPackages table and parentAnswerId to answers
+    this.version(8).stores({
+      projects: 'id, lastReviewed, status, nextReviewDate',
+      answers: 'id, projectID, questionID, weekOf, parentAnswerId, [projectID+questionID], [projectID+weekOf]',
+      sessions: 'id, startedAt',
+      tasks: 'id, projectId, status, completed, [projectId+status], [projectId+completed], dueDate, flagged, lastModified, syncState',
+      notionSyncQueue: 'id, projectId, weekOf, status, nextRetry, [projectId+weekOf]',
+      questions: 'id, category, [category+order]',
+      questionPackages: 'id, order'
+    })
+    // Version 9: Add parsedDate to answers for text-parsed questions
+    this.version(9).stores({
+      projects: 'id, lastReviewed, status, nextReviewDate',
+      answers: 'id, projectID, questionID, weekOf, parentAnswerId, parsedDate, [projectID+questionID], [projectID+weekOf]',
+      sessions: 'id, startedAt',
+      tasks: 'id, projectId, status, completed, [projectId+status], [projectId+completed], dueDate, flagged, lastModified, syncState',
+      notionSyncQueue: 'id, projectId, weekOf, status, nextRetry, [projectId+weekOf]',
+      questions: 'id, category, [category+order]',
+      questionPackages: 'id, order'
     })
   }
 }

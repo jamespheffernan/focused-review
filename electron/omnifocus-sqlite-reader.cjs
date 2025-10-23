@@ -259,7 +259,7 @@ function mapToAppFormat(rawProjects, projectInfoMap, allTasks, taskContexts) {
       status: status,
       deferDate: convertTimestamp(rawProject.effectiveDateToStart),
       dueDate: convertTimestamp(rawProject.effectiveDateDue),
-      reviewInterval: parseReviewInterval(projectInfo?.reviewRepetitionString || null),
+      reviewIntervalDays: parseReviewInterval(projectInfo?.reviewRepetitionString || null), // FIXED: was reviewInterval
       lastReviewDate: convertTimestamp(projectInfo?.lastReviewDate || null),
       nextReviewDate: convertTimestamp(projectInfo?.nextReviewDate || null),
       flagged: Boolean(rawProject.flagged),

@@ -1,5 +1,6 @@
 export type ProjectStatus = 'active'|'on_hold'|'dropped'
-export type QuestionType = 'text'|'slider'
+export type QuestionType = 'text'|'slider'|'yes-no'|'text-parsed'
+export type FollowupLogic = 'always'|'never'|'if_yes'|'if_no'|'if_answered'|'if_empty'|'if_score_lte'|'if_score_gte'|'if_text_equals'|'if_text_contains'
 export type AnswerStatus = 'CarriedForward'|'Updated'|'New'
 export type SyncState = 'synced'|'queued'|'retrying'|'error'
 export type TaskStatus = 'available'|'next'|'blocked'|'completed'
@@ -29,10 +30,29 @@ export interface TaskDTO {
 
 export interface QuestionDTO { id: string; prompt: string; type: QuestionType; order: number }
 
+export interface QuestionPackageDTO {
+  id: string
+  order: number
+  initialQuestion: string
+  initialQuestionType: QuestionType
+  initialFollowupLogic?: FollowupLogic
+  initialFollowupConditionValue?: string | number
+  initialFollowup?: string
+  initialFollowupType?: QuestionType
+  subsequentQuestion?: string
+  subsequentQuestionType?: QuestionType
+  subsequentFollowupLogic?: FollowupLogic
+  subsequentFollowupConditionValue?: string | number
+  subsequentFollowup?: string
+  subsequentFollowupType?: QuestionType
+}
+
 export interface AnswerDraft {
   id: string; projectID: string; questionID: string
   text?: string; engagementScore?: number
   weekOf: string; status: AnswerStatus
+  parentAnswerId?: string
+  parsedDate?: string
 }
 
 export interface SessionDTO {

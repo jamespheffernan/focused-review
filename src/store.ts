@@ -465,7 +465,10 @@ export const useApp = create<State>((set, get) => ({
 
   gotoSummary: () => set({ route: { name:'summary' } }),
   
-  gotoQuestions: () => set({ route: { name:'questions' } }),
+  gotoQuestions: () => {
+    console.log('🔧 gotoQuestions called, setting route to questions')
+    set({ route: { name:'questions' } })
+  },
   
   gotoQueue: () => set({ route: { name:'queue' } })
 }))

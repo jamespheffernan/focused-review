@@ -85,3 +85,33 @@ export const removeDuplicateAnswers = async (): Promise<number> => {
   }
   return removedCount
 }
+
+/**
+ * Get an answer and its followup answer if it exists
+ */
+export const getAnswerWithFollowup = async (answerId: string): Promise<{answer: AnswerDraft | undefined, followup: AnswerDraft | undefined}> => {
+  const answer = await db.answers.get(answerId)
+  if (!answer) {
+    return { answer: undefined, followup: undefined }
+  }
+  
+  const followup = await getFollowupAnswer(answerId)
+  return { answer, followup }
+}
+
+/**
+ * Get the followup answer linked to a parent answer
+ */
+export const getFollowupAnswer = async (parentAnswerId: string): Promise<AnswerDraft | undefined> => {
+  return await db.answers.where('parentAnswerId').equals(parentAnswerId).first()
+}
+
+/**
+ * Get the initial answer for a project and question (from first review)
+ */
+export const getInitialAnswer = async (projectID: string, questionID: string): Promise<AnswerDraft | undefined> => {
+  return await db.answers
+    .where({ projectID, questionID })
+    .sortBy('weekOf')
+    .then(answers => answers[0]) // First answer (oldest)
+}

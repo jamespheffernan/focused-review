@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import type { TaskDTO } from '../types'
 import { fetchTasksForProject, createTask, updateTask } from '../repos/tasksRepo'
 import TaskItem from './TaskItem'
-import NewTaskForm from './NewTaskForm'
+import TaskForm from './TaskForm'
 import { taskSyncQueue } from '../services/taskSyncQueue'
 import { AlertTriangle, RefreshCw } from 'lucide-react'
 
@@ -168,9 +168,14 @@ export default function TaskList({
             + Add Task
           </button>
         ) : (
-          <NewTaskForm
+          <TaskForm
             projectId={projectId}
-            onSave={handleTaskCreate}
+            onSave={(taskData) => {
+              // TaskForm will pass the correct type for create mode
+              if ('projectId' in taskData && taskData.projectId) {
+                handleTaskCreate(taskData as Omit<TaskDTO, 'id' | 'lastModified' | 'syncState'>)
+              }
+            }}
             onCancel={() => setShowNewTaskForm(false)}
           />
         )}

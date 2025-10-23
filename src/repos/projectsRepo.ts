@@ -6,12 +6,20 @@ import { syncManager } from '../services/syncManager'
 
 // Guard to prevent concurrent syncs
 let isSyncing = false
+let syncPromise: Promise<ProjectDTO[]> | null = null
+let isImporting = false  // Flag to prevent reads during import
 
 /**
  * Load projects from local cache (IndexedDB) - FAST
  * Does NOT sync from OmniFocus
  */
 export async function loadQueueFromCache(): Promise<ProjectDTO[]> {
+  // Don't try to read during import - it will cause a deadlock
+  if (isImporting) {
+    console.log('⏸️  Load queue skipped - import in progress')
+    return []
+  }
+  
   try {
     console.time('loadQueueFromCache')
     
@@ -21,29 +29,42 @@ export async function loadQueueFromCache(): Promise<ProjectDTO[]> {
       .notEqual('dropped')
       .toArray()
     
-    console.log(`Loaded ${allProjects.length} active projects from cache`)
+    console.log(`📦 Loaded ${allProjects.length} active projects from cache`)
     
-    // Debug: Log first few projects to see what data we have
-    console.log('Sample projects:', allProjects.slice(0, 3).map(p => ({
-      name: p.name,
-      nextReviewDate: p.nextReviewDate,
-      lastReviewed: p.lastReviewed,
-      reviewIntervalDays: p.reviewIntervalDays
-    })))
+    // Debug: Log ALL projects to see what data we have
+    console.log('📊 All projects from cache:')
+    allProjects.forEach((p, idx) => {
+      console.log(`  ${idx + 1}. ${p.name}:`, {
+        nextReviewDate: p.nextReviewDate,
+        lastReviewed: p.lastReviewed,
+        reviewIntervalDays: p.reviewIntervalDays,
+        status: p.status
+      })
+    })
     
     // Filter to only projects due or overdue for review
     const now = new Date()
+    console.log(`🔍 Current time: ${now.toISOString()}`)
+    console.log(`🔍 Filtering projects due for review...`)
+    
     const dueProjects = allProjects.filter(project => {
       // If project has no nextReviewDate, exclude it from review queue
       // (projects without review schedules aren't tracked for review)
       if (!project.nextReviewDate) {
-        console.log(`⚠️ Project "${project.name}" has no nextReviewDate - excluding from review queue`)
+        console.log(`  ❌ "${project.name}" - NO nextReviewDate (excluding)`)
         return false
       }
       
       const nextReview = new Date(project.nextReviewDate)
       const isDue = nextReview <= now
-      console.log(`Project "${project.name}": nextReview=${nextReview.toISOString()}, isDue=${isDue}`)
+      const daysUntilDue = Math.round((nextReview.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+      
+      if (isDue) {
+        console.log(`  ✅ "${project.name}" - DUE (${Math.abs(daysUntilDue)} days overdue)`)
+      } else {
+        console.log(`  ⏭️  "${project.name}" - not due yet (${daysUntilDue} days remaining)`)
+      }
+      
       return isDue
     })
     
@@ -70,18 +91,24 @@ export async function loadQueueFromCache(): Promise<ProjectDTO[]> {
  * Clears local database and imports fresh data from OmniFocus
  */
 export async function syncFromOmniFocus(): Promise<ProjectDTO[]> {
-  // Prevent concurrent syncs
-  if (isSyncing) {
-    console.warn('⚠️ Sync already in progress - skipping duplicate sync request')
-    return loadQueueFromCache() // Return cached data while sync is happening
+  console.log('🚀 ==================== SYNC FROM OMNIFOCUS CALLED ====================')
+  console.log('🚀 Call stack:', new Error().stack)
+  
+  // Prevent concurrent syncs - if sync is in progress, wait for it to complete
+  if (isSyncing && syncPromise) {
+    console.warn('⚠️ ⚠️ ⚠️ Sync already in progress - WAITING for it to complete ⚠️ ⚠️ ⚠️')
+    console.warn('⚠️ This indicates a duplicate sync call - will return results from in-progress sync')
+    return syncPromise // Wait for the in-progress sync to complete
   }
   
   isSyncing = true
   console.log('🔒 Sync lock acquired')
   
-  try {
-    console.time('syncFromOmniFocus')
-    console.log('🔄 Syncing from OmniFocus...')
+  // Create the sync promise so other callers can wait for it
+  syncPromise = (async () => {
+    try {
+      console.time('syncFromOmniFocus')
+      console.log('🔄 Syncing from OmniFocus...')
     
     // Get projects from OmniFocus
     const omnifocusProjects = await omnifocusService.getProjectsDueForReview()
@@ -91,15 +118,13 @@ export async function syncFromOmniFocus(): Promise<ProjectDTO[]> {
     if (omnifocusProjects.length > 0) {
       console.log('✅ Projects count > 0, starting import...')
       try {
-        // Clear old projects to prevent accumulation of dropped/completed items
-        console.log('🗑️ Clearing old projects from cache...')
-        await db.transaction('rw', db.projects, db.tasks, async () => {
-          await db.projects.clear()
-          await db.tasks.clear()
-          console.log('✅ Old data cleared')
-        })
+        // NOTE: We don't clear the database first - bulkPut will update existing projects
+        // and add new ones. This prevents data loss if the sync is interrupted.
+        console.log('📝 Preparing to import/update projects...')
         
-        console.log('📝 Preparing to import fresh data...')
+        // Set import flag to prevent concurrent reads
+        isImporting = true
+        console.log('🔒 Import lock acquired - preventing concurrent reads')
         
         // Check if projects have task data
         const hasTaskData = omnifocusProjects.some(p => p.tasks && Array.isArray(p.tasks))
@@ -132,6 +157,10 @@ export async function syncFromOmniFocus(): Promise<ProjectDTO[]> {
         
         console.log('✅ Import completed successfully')
         
+        // Release import lock
+        isImporting = false
+        console.log('🔓 Import lock released')
+        
         // Update last sync timestamp ONLY after successful import
         syncManager.setLastSyncTimestamp()
         console.log('✅ Sync complete - timestamp updated')
@@ -144,6 +173,9 @@ export async function syncFromOmniFocus(): Promise<ProjectDTO[]> {
         console.log('📊 Sample cached project:', cachedProjects[0])
         return cachedProjects
       } catch (importError) {
+        // Release import lock on error
+        isImporting = false
+        console.log('🔓 Import lock released (error path)')
         console.error('❌ Import failed:', importError)
         console.error('Import error details:', importError)
         throw importError
@@ -155,20 +187,24 @@ export async function syncFromOmniFocus(): Promise<ProjectDTO[]> {
       // Don't set timestamp if no projects found
       return []
     }
-  } catch (error) {
-    console.error('❌ Error syncing from OmniFocus:', error)
-    console.error('Error type:', error?.constructor?.name)
-    console.error('Error message:', error instanceof Error ? error.message : String(error))
-    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace')
-    console.timeEnd('syncFromOmniFocus')
-    
-    // Don't set timestamp on error - force retry next time
-    return []
-  } finally {
-    // Always release the lock
-    isSyncing = false
-    console.log('🔓 Sync lock released')
-  }
+    } catch (error) {
+      console.error('❌ Error syncing from OmniFocus:', error)
+      console.error('Error type:', error?.constructor?.name)
+      console.error('Error message:', error instanceof Error ? error.message : String(error))
+      console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace')
+      console.timeEnd('syncFromOmniFocus')
+      
+      // Don't set timestamp on error - force retry next time
+      return []
+    } finally {
+      // Always release the lock and clear the promise
+      isSyncing = false
+      syncPromise = null
+      console.log('🔓 Sync lock released')
+    }
+  })()
+  
+  return syncPromise
 }
 
 /**
@@ -336,15 +372,21 @@ export async function importOmniFocusProjectsWithTasks(projects: any[]) {
     console.log(`📝 Prepared ${projectDTOs.length} projects and ${allTasks.length} tasks`)
     console.log('📝 Sample project DTO:', projectDTOs[0])
     
-    // Add projects
-    console.log('💾 Starting bulkPut for projects...')
-    try {
-      await db.projects.bulkPut(projectDTOs)
-      console.log(`✅ Added ${projectDTOs.length} projects to database`)
-    } catch (projectError) {
-      console.error('❌ Error in projects bulkPut:', projectError)
-      throw projectError
+    // Add projects one at a time to avoid database lock issues
+    console.log(`💾 Starting to add ${projectDTOs.length} projects...`)
+    let projectsAdded = 0
+    for (const project of projectDTOs) {
+      try {
+        await db.projects.put(project)
+        projectsAdded++
+        if (projectsAdded % 10 === 0) {
+          console.log(`  Added ${projectsAdded}/${projectDTOs.length} projects...`)
+        }
+      } catch (projectError) {
+        console.error(`❌ Error adding project ${project.name}:`, projectError)
+      }
     }
+    console.log(`✅ Added ${projectsAdded}/${projectDTOs.length} projects to database`)
     
     // Add tasks
     console.log(`📊 Total tasks to import: ${allTasks.length}`)
@@ -359,22 +401,20 @@ export async function importOmniFocusProjectsWithTasks(projects: any[]) {
       console.log(`💾 Attempting to add ${newTasks.length} tasks to database...`)
       console.log('💾 Sample task:', newTasks[0])
       
-      // Use bulkPut instead of bulkAdd to handle potential duplicates
-      try {
-        await db.tasks.bulkPut(newTasks)
-        console.log(`✅ Successfully imported ${newTasks.length} tasks from OmniFocus`)
-      } catch (taskError) {
-        console.error('❌ Error in tasks bulkPut:', taskError)
-        throw taskError
+      // Add tasks one at a time to avoid database lock issues
+      let tasksAdded = 0
+      for (const task of newTasks) {
+        try {
+          await db.tasks.put(task)
+          tasksAdded++
+          if (tasksAdded % 50 === 0) {
+            console.log(`  Added ${tasksAdded}/${newTasks.length} tasks...`)
+          }
+        } catch (taskError) {
+          console.error(`❌ Error adding task ${task.name}:`, taskError)
+        }
       }
-      
-      // Verify the tasks were actually added
-      const verifyTasks = await db.tasks.toArray()
-      console.log(`✅ Database now contains ${verifyTasks.length} total tasks`)
-      
-      if (verifyTasks.length === 0) {
-        console.error('❌ WARNING: Tasks were not saved to database!')
-      }
+      console.log(`✅ Successfully imported ${tasksAdded}/${newTasks.length} tasks from OmniFocus`)
     } else {
       console.warn('⚠️ No tasks to import! Check if projects have tasks attached.')
     }

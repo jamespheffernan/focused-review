@@ -10,6 +10,7 @@ export interface ElectronAPI {
     markProjectComplete: (projectId: string) => Promise<{ success: boolean; projectId?: string; completed?: boolean; error?: string }>
     dropProject: (projectId: string) => Promise<{ success: boolean; projectId?: string; status?: string; error?: string }>
     createTask: (projectId: string, taskName: string) => Promise<{ success: boolean; taskId?: string; taskName?: string; error?: string }>
+    createInboxTask: (taskName: string) => Promise<{ success: boolean; taskId?: string; taskName?: string; error?: string }>
     setTaskContext: (taskId: string, contextName: string) => Promise<{ success: boolean; taskId?: string; contextName?: string; error?: string }>
     setTaskDueDate: (taskId: string, dueDate: string | null) => Promise<{ success: boolean; taskId?: string; dueDate?: string | null; error?: string }>
     toggleTaskCompletion: (taskId: string, isComplete: boolean) => Promise<{ success: boolean; taskId?: string; completed?: boolean; completionDate?: string | null; error?: string }>

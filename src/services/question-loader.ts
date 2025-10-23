@@ -1,218 +1,136 @@
-import type { QuestionDTO } from '../types'
-
-interface QuestionSet {
-  first: QuestionDTO[]
-  subsequent: QuestionDTO[]
-}
-
-// Parse the markdown file to extract questions
-function parseQuestionsFromMarkdown(markdown: string): QuestionSet {
-  const lines = markdown.split('\n')
-  
-  const firstQuestions: QuestionDTO[] = []
-  const subsequentQuestions: QuestionDTO[] = []
-  
-  let currentSection: 'none' | 'first' | 'subsequent' = 'none'
-  let currentQuestion: Partial<QuestionDTO> | null = null
-  let order = 1
-  
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim()
-    
-    // Detect section headers
-    if (line.includes('## First Review Questions')) {
-      // Save any pending question from previous section before switching
-      if (currentQuestion && currentQuestion.id && currentQuestion.prompt && currentQuestion.type) {
-        const question: QuestionDTO = {
-          id: currentQuestion.id,
-          prompt: currentQuestion.prompt,
-          type: currentQuestion.type as 'text' | 'slider',
-          order: currentQuestion.order || order
-        }
-        
-        if (currentSection === 'first') {
-          firstQuestions.push(question)
-        } else if (currentSection === 'subsequent') {
-          subsequentQuestions.push(question)
-        }
-        currentQuestion = null
-      }
-      
-      currentSection = 'first'
-      order = 1
-      continue
-    } else if (line.includes('## Subsequent Review Questions')) {
-      // Save any pending question from previous section before switching
-      if (currentQuestion && currentQuestion.id && currentQuestion.prompt && currentQuestion.type) {
-        const question: QuestionDTO = {
-          id: currentQuestion.id,
-          prompt: currentQuestion.prompt,
-          type: currentQuestion.type as 'text' | 'slider',
-          order: currentQuestion.order || order
-        }
-        
-        if (currentSection === 'first') {
-          firstQuestions.push(question)
-        } else if (currentSection === 'subsequent') {
-          subsequentQuestions.push(question)
-        }
-        currentQuestion = null
-      }
-      
-      currentSection = 'subsequent'
-      order = 1
-      continue
-    } else if (line.startsWith('## ') && !line.includes('Question Types')) {
-      // Save any pending question before leaving section
-      if (currentQuestion && currentQuestion.id && currentQuestion.prompt && currentQuestion.type) {
-        const question: QuestionDTO = {
-          id: currentQuestion.id,
-          prompt: currentQuestion.prompt,
-          type: currentQuestion.type as 'text' | 'slider',
-          order: currentQuestion.order || order
-        }
-        
-        if (currentSection === 'first') {
-          firstQuestions.push(question)
-        } else if (currentSection === 'subsequent') {
-          subsequentQuestions.push(question)
-        }
-        currentQuestion = null
-      }
-      
-      // Other section, reset
-      currentSection = 'none'
-      continue
-    }
-    
-    if (currentSection === 'none') continue
-    
-    // Parse question fields
-    if (line.startsWith('**ID:**')) {
-      // Save previous question if exists
-      if (currentQuestion && currentQuestion.id && currentQuestion.prompt && currentQuestion.type) {
-        const question: QuestionDTO = {
-          id: currentQuestion.id,
-          prompt: currentQuestion.prompt,
-          type: currentQuestion.type as 'text' | 'slider',
-          order: currentQuestion.order || order++
-        }
-        
-        if (currentSection === 'first') {
-          firstQuestions.push(question)
-        } else {
-          subsequentQuestions.push(question)
-        }
-      }
-      
-      // Start new question
-      const id = line.replace('**ID:**', '').trim().replace(/`/g, '')
-      currentQuestion = { id }
-    } else if (line.startsWith('**Type:**')) {
-      let type = line.replace('**Type:**', '').trim().replace(/`/g, '')
-      // Convert 'mood' to 'slider' for backward compatibility
-      if (type === 'mood') type = 'slider'
-      if (currentQuestion) {
-        currentQuestion.type = type as 'text' | 'slider'
-      }
-    } else if (line.startsWith('**Question:**')) {
-      const prompt = line.replace('**Question:**', '').trim()
-      if (currentQuestion) {
-        currentQuestion.prompt = prompt
-        currentQuestion.order = order
-      }
-    }
-  }
-  
-  // Save last question
-  if (currentQuestion && currentQuestion.id && currentQuestion.prompt && currentQuestion.type) {
-    const question: QuestionDTO = {
-      id: currentQuestion.id,
-      prompt: currentQuestion.prompt,
-      type: currentQuestion.type as 'text' | 'slider',
-      order: currentQuestion.order || order
-    }
-    
-    if (currentSection === 'first') {
-      firstQuestions.push(question)
-    } else {
-      subsequentQuestions.push(question)
-    }
-  }
-  
-  console.log('📋 Parsed questions from markdown:')
-  console.log('  First questions:', firstQuestions.map(q => q.id))
-  console.log('  Subsequent questions:', subsequentQuestions.map(q => q.id))
-  
-  return {
-    first: firstQuestions.sort((a, b) => a.order - b.order),
-    subsequent: subsequentQuestions.sort((a, b) => a.order - b.order)
-  }
-}
-
-// Fallback questions if file can't be loaded
-const FALLBACK_QUESTIONS: QuestionSet = {
-  first: [
-    { id: 'q-purpose', prompt: 'Why am I doing this project?', type: 'text', order: 1 },
-    { id: 'q-reality', prompt: 'Where am I right now with it?', type: 'text', order: 2 },
-    { id: 'q-next', prompt: 'Is this the clearly defined, physical Next Action?', type: 'text', order: 3 },
-    { id: 'q-timeline', prompt: 'What\'s the realistic timeline for this project?', type: 'text', order: 4 },
-    { id: 'q-align', prompt: 'Does this align with higher-level goals?', type: 'text', order: 5 },
-    { id: 'q-engage', prompt: 'How do you feel about this project?', type: 'slider', order: 6 }
-  ],
-  subsequent: [
-    { id: 'q-relevance', prompt: 'Is this project still relevant to my goals?', type: 'text', order: 1 },
-    { id: 'q-reality', prompt: 'Where am I right now with it?', type: 'text', order: 2 },
-    { id: 'q-next', prompt: 'Is this the clearly defined, physical Next Action?', type: 'text', order: 3 },
-    { id: 'q-timeline', prompt: 'Is the timeline still realistic? Any adjustments needed?', type: 'text', order: 4 },
-    { id: 'q-align', prompt: 'Does this align with higher-level goals?', type: 'text', order: 5 },
-    { id: 'q-engage', prompt: 'How do you feel about this project?', type: 'slider', order: 6 }
-  ]
-}
-
-let cachedQuestions: QuestionSet | null = null
+import type { QuestionDTO, QuestionPackageDTO, FollowupLogic, AnswerDraft } from '../types'
+import { getAllPackages } from '../repos/questionPackagesRepo'
+import { latest } from '../repos/answersRepo'
 
 /**
- * Load review questions from the markdown file
+ * Determine if a followup question should be shown based on the answer and logic
  */
-export async function loadReviewQuestions(): Promise<QuestionSet> {
-  if (cachedQuestions) {
-    return cachedQuestions
+function shouldShowFollowup(answer: AnswerDraft | undefined, logic: FollowupLogic, conditionValue?: string | number): boolean {
+  if (!answer) return false
+  
+  switch (logic) {
+    case 'always':
+      return true
+    case 'never':
+      return false
+    case 'if_answered':
+      return answer.text !== undefined && answer.text.trim() !== '' || answer.engagementScore !== undefined
+    case 'if_empty':
+      return answer.text === undefined || answer.text.trim() === ''
+    case 'if_yes':
+      return answer.text === 'yes' || answer.text === 'Yes'
+    case 'if_no':
+      return answer.text === 'no' || answer.text === 'No'
+    case 'if_score_lte':
+      return answer.engagementScore !== undefined && answer.engagementScore <= (conditionValue as number)
+    case 'if_score_gte':
+      return answer.engagementScore !== undefined && answer.engagementScore >= (conditionValue as number)
+    case 'if_text_equals':
+      return answer.text === conditionValue
+    case 'if_text_contains':
+      return answer.text?.includes(conditionValue as string) || false
+    default:
+      return false
+  }
+}
+
+/**
+ * Expand a QuestionPackage into individual questions based on review status and previous answers
+ */
+async function expandPackage(pkg: QuestionPackageDTO, projectId: string, hasBeenReviewedBefore: boolean): Promise<QuestionDTO[]> {
+  const questions: QuestionDTO[] = []
+  
+  if (hasBeenReviewedBefore) {
+    // Subsequent review - use subsequent question if it exists
+    if (pkg.subsequentQuestion) {
+      const questionId = `${pkg.id}-subsequent`
+      questions.push({
+        id: questionId,
+        prompt: pkg.subsequentQuestion,
+        type: pkg.subsequentQuestionType || 'text',
+        order: pkg.order
+      })
+      
+      // Check if followup should be shown
+      if (pkg.subsequentFollowup && pkg.subsequentFollowupLogic) {
+        const parentAnswer = await latest(projectId, questionId)
+        if (shouldShowFollowup(parentAnswer, pkg.subsequentFollowupLogic, pkg.subsequentFollowupConditionValue)) {
+          questions.push({
+            id: `${pkg.id}-subsequent-followup`,
+            prompt: pkg.subsequentFollowup,
+            type: pkg.subsequentFollowupType || 'text',
+            order: pkg.order + 0.5 // Place after main question
+          })
+        }
+      }
+    }
+  } else {
+    // Initial review - use initial question
+    const questionId = `${pkg.id}-initial`
+    questions.push({
+      id: questionId,
+      prompt: pkg.initialQuestion,
+      type: pkg.initialQuestionType,
+      order: pkg.order
+    })
+    
+    // Check if followup should be shown
+    if (pkg.initialFollowup && pkg.initialFollowupLogic) {
+      const parentAnswer = await latest(projectId, questionId)
+      if (shouldShowFollowup(parentAnswer, pkg.initialFollowupLogic, pkg.initialFollowupConditionValue)) {
+        questions.push({
+          id: `${pkg.id}-initial-followup`,
+          prompt: pkg.initialFollowup,
+          type: pkg.initialFollowupType || 'text',
+          order: pkg.order + 0.5 // Place after main question
+        })
+      }
+    }
   }
   
+  return questions
+}
+
+/**
+ * Load QuestionPackages and expand them into questions for a specific project
+ */
+export async function loadQuestionPackagesForProject(projectId: string, hasBeenReviewedBefore: boolean): Promise<QuestionDTO[]> {
   try {
-    // Try to load from file system (Electron and web builds)
-    // File should be in public/ directory, which gets copied to build root
-    // Use relative path for Electron compatibility (loadFile uses file:// protocol)
-    const response = await fetch('./review-questions.md')
+    const packages = await getAllPackages()
+    const allQuestions: QuestionDTO[] = []
     
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+    for (const pkg of packages) {
+      const questions = await expandPackage(pkg, projectId, hasBeenReviewedBefore)
+      allQuestions.push(...questions)
     }
     
-    const markdown = await response.text()
-    
-    if (!markdown || markdown.trim().length === 0) {
-      throw new Error('Loaded markdown file is empty')
-    }
-    
-    cachedQuestions = parseQuestionsFromMarkdown(markdown)
-    console.log('✅ Loaded questions from markdown file')
-    return cachedQuestions
+    // Sort by order
+    return allQuestions.sort((a, b) => a.order - b.order)
   } catch (error) {
-    console.warn('⚠️ Failed to load questions from markdown, using fallback:', error)
+    console.error('Error loading question packages:', error)
+    return []
   }
-  
-  // Use fallback
-  cachedQuestions = FALLBACK_QUESTIONS
-  return cachedQuestions
 }
 
 /**
  * Get questions for a specific project based on review history
+ * This is the main entry point for the new QuestionPackage system
  */
-export async function getQuestionsForProject(_projectId: string, hasBeenReviewedBefore: boolean): Promise<QuestionDTO[]> {
-  const questionSet = await loadReviewQuestions()
-  return hasBeenReviewedBefore ? questionSet.subsequent : questionSet.first
+export async function getQuestionsForProject(projectId: string, hasBeenReviewedBefore: boolean): Promise<QuestionDTO[]> {
+  return await loadQuestionPackagesForProject(projectId, hasBeenReviewedBefore)
+}
+
+/**
+ * Legacy function for backward compatibility
+ * @deprecated Use getQuestionsForProject instead
+ */
+export async function loadReviewQuestions(): Promise<{first: QuestionDTO[], subsequent: QuestionDTO[]}> {
+  console.warn('loadReviewQuestions is deprecated, use getQuestionsForProject instead')
+  
+  // Return empty arrays for legacy compatibility
+  return {
+    first: [],
+    subsequent: []
+  }
 }
 

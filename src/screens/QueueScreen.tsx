@@ -3,13 +3,13 @@ import { useApp } from '../store'
 import { getOmniFocusIntegrationStatus } from '../repos/projectsRepo'
 import { getTaskStatisticsBatch } from '../repos/tasksRepo'
 import { syncManager } from '../services/syncManager'
-import { RefreshCw, Info, AlertTriangle, ClipboardList, CheckCircle2, Ban } from 'lucide-react'
+import { RefreshCw, Info, AlertTriangle, ClipboardList, CheckCircle2, Ban, Settings } from 'lucide-react'
 import ThemeSelector from '../components/ThemeSelector'
 import { themeManager } from '../services/themeManager'
 import { DataSourceBanner } from '../components/DataSourceBanner'
 
 export default function QueueScreen() {
-  const { queue, start, syncFromOmniFocus } = useApp()
+  const { queue, start, syncFromOmniFocus, gotoQuestions } = useApp()
   const [sel, setSel] = useState<Set<string>>(new Set())
   
   // Track data source for banner
@@ -88,11 +88,12 @@ export default function QueueScreen() {
   }
 
   // Load task statistics when component mounts or queue changes
+  // But NOT during a sync operation (to avoid database lock conflicts)
   useEffect(() => {
-    if (queue.length > 0) {
+    if (queue.length > 0 && !isSyncing) {
       loadTaskStatistics()
     }
-  }, [queue])
+  }, [queue, isSyncing])
   
   return (
     <>
@@ -127,6 +128,26 @@ export default function QueueScreen() {
           
           <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
             <ThemeSelector />
+            
+            <button
+              onClick={gotoQuestions}
+              style={{
+                background: 'rgba(255, 255, 255, 0.1)',
+                color: 'white',
+                border: '1px solid rgba(255, 255, 255, 0.3)',
+                borderRadius: '8px',
+                padding: '8px 16px',
+                cursor: 'pointer',
+                fontSize: '0.9em',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                transition: 'all 0.2s ease'
+              }}
+              title="Edit Questions"
+            >
+              <Settings size={16} />
+            </button>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-end' }}>
               <button

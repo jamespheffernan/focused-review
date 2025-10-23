@@ -70,6 +70,12 @@ export default function KeyboardShortcuts() {
           <strong>Enter</strong> Go to next question
         </div>
         <div style={{ marginBottom: '8px' }}>
+          <strong>Y / N</strong> Answer yes/no questions
+        </div>
+        <div style={{ marginBottom: '8px' }}>
+          <strong>1 / 2 / 3</strong> Engagement rating
+        </div>
+        <div style={{ marginBottom: '8px' }}>
           <strong>Space</strong> Mark reviewed & next
         </div>
         <div style={{ marginBottom: '8px' }}>
