@@ -2493,7 +2493,7 @@
   padding: 4px;
   display: inline-flex;
   align-items: center;
-  margin-right: 8px;
+  margin-left: 12px;
   transition: all 0.2s ease;
   border-radius: 4px;
 }

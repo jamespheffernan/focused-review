@@ -580,6 +580,7 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
               onNavigate={handleProjectNavigate}
             />
             <div className="project-name">
+              Project: {project.name}
               <button 
                 className="omnifocus-button" 
                 onClick={openInOmniFocus} 
@@ -587,7 +588,6 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
               >
                 <ExternalLink size={20} />
               </button>
-              Project: {project.name}
               {hasNotionLink(project.notes) && (
                 <span 
                   className="notion-indicator"
