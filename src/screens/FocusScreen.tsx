@@ -12,6 +12,7 @@ import TaskList from '../components/TaskList'
 import FloatingInboxButton from '../components/FloatingInboxButton'
 import ProjectNavigator from '../components/ProjectNavigator'
 import CalendarOverlay from '../components/CalendarOverlay'
+import ActionConfirmationOverlay from '../components/ActionConfirmationOverlay'
 import { extractNotionLink, getNotionLinkError, hasNotionLink } from '../utils/notionLink'
 import { parseNaturalDate, describeNaturalDate } from '../utils/date-parser'
 import { FileText, SkipForward, CheckCircle, RefreshCw, ExternalLink, Calendar } from 'lucide-react'
@@ -33,6 +34,9 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
   const [datePreview, setDatePreview] = useState<string | null>(null)
   const [initialAnswer, setInitialAnswer] = useState('')
   const [showConfirmation, setShowConfirmation] = useState(false)
+  const [overlayVisible, setOverlayVisible] = useState(false)
+  const [overlayMessage, setOverlayMessage] = useState<string>('')
+  const [overlayVariant, setOverlayVariant] = useState<'review' | 'dropped' | 'someday'>('review')
   const [showInboxSuccess, setShowInboxSuccess] = useState(false)
   const [inboxTaskName, setInboxTaskName] = useState('')
   // Local state to track dynamically injected followup questions
@@ -86,7 +90,9 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
     setSelectedYesNo(null)
     setDatePreview(null)
     setInitialAnswer('')
-    setShowConfirmation(false) // Reset confirmation overlay when project changes
+    setShowConfirmation(false) // Reset legacy confirmation overlay when project changes
+    setOverlayVisible(false)
+    setOverlayMessage('')
     setShowInboxSuccess(false) // Reset inbox success overlay when project changes
     setInjectedFollowups(new Map()) // Clear injected followups when switching projects
     // Load context-aware questions for the current project
@@ -391,11 +397,13 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
     if (nextIdx >= totalQuestions) {
       // Last question - trigger completion
       console.log(`[DEBUG] Last question answered, triggering completion`)
-      setShowConfirmation(true)
+      setOverlayVariant('review')
+      setOverlayMessage('✓ Project Reviewed')
+      setOverlayVisible(true)
       setTimeout(() => {
-        setShowConfirmation(false)
+        setOverlayVisible(false)
         markReviewedAndNext(project, projectIndex)
-      }, 1500)
+      }, 1000)
     } else {
       setIdx(nextIdx)
     }
@@ -534,11 +542,13 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
     if (nextIdx >= totalQuestions) {
       // Last question - trigger completion
       console.log(`[DEBUG] Last question answered, triggering completion`)
-      setShowConfirmation(true)
+      setOverlayVariant('review')
+      setOverlayMessage('✓ Project Reviewed')
+      setOverlayVisible(true)
       setTimeout(() => {
-        setShowConfirmation(false)
+        setOverlayVisible(false)
         markReviewedAndNext(project, projectIndex)
-      }, 1500)
+      }, 1000)
     } else {
       setIdx(nextIdx)
     }
@@ -586,11 +596,13 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
     if (nextIdx >= currentTotal) {
       // Last question - show confirmation and complete the review
       console.log(`[DEBUG] Last question - triggering completion`)
-      setShowConfirmation(true)
+      setOverlayVariant('review')
+      setOverlayMessage('✓ Project Reviewed')
+      setOverlayVisible(true)
       setTimeout(() => {
-        setShowConfirmation(false)
+        setOverlayVisible(false)
         markReviewedAndNext(project, projectIndex)
-      }, 1500)
+      }, 1000)
     } else {
       // Mark current question as skipped if not answered
       const hasAnswerInArray = answeredQuestions.some(aq => aq.id === q.id && aq.status === 'answered')
@@ -619,12 +631,11 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
 
   // Function to handle mark reviewed with overlay
   function handleMarkReviewed() {
-    // Show confirmation overlay
-    setShowConfirmation(true)
-    
-    // Wait 1 second, then transition
+    setOverlayVariant('review')
+    setOverlayMessage('✓ Project Reviewed')
+    setOverlayVisible(true)
     setTimeout(() => {
-      setShowConfirmation(false)
+      setOverlayVisible(false)
       markReviewedAndNext(project, projectIndex)
     }, 1000)
   }
@@ -1004,39 +1015,12 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
       </div>
     </div>
     
-    {/* Confirmation Overlay */}
-    {showConfirmation && (
-      <div style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: 'rgba(0, 0, 0, 0.5)',
-        backdropFilter: 'blur(10px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 10000,
-        animation: 'fadeIn 0.3s ease-out'
-      }}>
-        <div style={{
-          background: 'rgba(255, 255, 255, 0.15)',
-          backdropFilter: 'blur(30px)',
-          border: '2px solid rgba(255, 255, 255, 0.3)',
-          borderRadius: '24px',
-          padding: '48px 64px',
-          textAlign: 'center',
-          fontSize: '2em',
-          fontWeight: '700',
-          color: 'white',
-          boxShadow: '0 16px 64px rgba(0, 0, 0, 0.3)',
-          animation: 'scaleIn 0.3s ease-out'
-        }}>
-          ✓ Project Reviewed
-        </div>
-      </div>
-    )}
+    {/* Action Confirmation Overlay */}
+    <ActionConfirmationOverlay
+      visible={overlayVisible}
+      message={overlayMessage}
+      variant={overlayVariant}
+    />
     
     {/* Floating Inbox Button */}
     <FloatingInboxButton onCreateInboxTask={handleCreateInboxTask} />
@@ -1102,13 +1086,29 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
         </button>
         <button 
           className="action-button archive"
-          onClick={() => archiveAndNext(project, projectIndex)}
+          onClick={() => {
+            setOverlayVariant('dropped')
+            setOverlayMessage('✓ Project Dropped')
+            setOverlayVisible(true)
+            setTimeout(() => {
+              setOverlayVisible(false)
+              archiveAndNext(project, projectIndex)
+            }, 900)
+          }}
         >
           Drop
         </button>
         <button 
           className="action-button someday-maybe"
-          onClick={() => somedayMaybeAndNext(project, projectIndex)}
+          onClick={() => {
+            setOverlayVariant('someday')
+            setOverlayMessage('✓ Moved to Someday/Maybe')
+            setOverlayVisible(true)
+            setTimeout(() => {
+              setOverlayVisible(false)
+              somedayMaybeAndNext(project, projectIndex)
+            }, 900)
+          }}
         >
           Someday/Maybe
         </button>
