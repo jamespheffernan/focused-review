@@ -1871,6 +1871,9 @@
   cursor: pointer;
   transition: all 0.2s ease;
   min-width: 120px;
+  /* Persistent outline so buttons are clearly delineated on page load */
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
 
 .yes-no-button:hover {
@@ -1888,6 +1891,13 @@
 
 /* Accessible keyboard focus outline for Yes/No buttons */
 .yes-no-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/* Fallback for browsers/environments where :focus-visible is not applied */
+.yes-no-button:focus {
+  border-color: var(--accent);
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
