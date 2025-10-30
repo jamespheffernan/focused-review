@@ -841,30 +841,15 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
                 onClick={toggleCalendar}
                 title={`View Calendar (${window.electronAPI?.platform.isMacOS ? 'Cmd' : 'Ctrl'}+K)`}
                 style={{
-                  background: 'rgba(33, 150, 243, 0.15)',
-                  border: '1px solid rgba(33, 150, 243, 0.3)',
-                  borderRadius: '8px',
-                  color: '#2196F3',
-                  padding: '8px 16px',
-                  fontSize: '0.9em',
-                  fontWeight: '500',
+                  background: 'transparent',
+                  border: 'none',
+                  padding: 0,
                   cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  transition: 'all 0.2s ease'
-                }}
-                onMouseOver={(e) => {
-                  e.currentTarget.style.background = 'rgba(33, 150, 243, 0.25)'
-                  e.currentTarget.style.borderColor = 'rgba(33, 150, 243, 0.5)'
-                }}
-                onMouseOut={(e) => {
-                  e.currentTarget.style.background = 'rgba(33, 150, 243, 0.15)'
-                  e.currentTarget.style.borderColor = 'rgba(33, 150, 243, 0.3)'
+                  display: 'inline-flex',
+                  alignItems: 'center'
                 }}
               >
-                <Calendar size={18} />
-                Calendar
+                <Calendar size={20} color="#ffffff" />
               </button>
               <div className="timer-container">
                 <TimerCircle remaining={remaining} total={30} />
