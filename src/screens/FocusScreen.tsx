@@ -165,6 +165,13 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
         return
       }
 
+      // Handle 1 and 2 keys for yes/no questions (1 → Yes, 2 → No)
+      if (q.type === 'yes-no' && (e.key === '1' || e.key === '2')) {
+        e.preventDefault()
+        handleYesNoChange(e.key === '1')
+        return
+      }
+
       switch (e.key) {
         case 'ArrowLeft':
           e.preventDefault()
