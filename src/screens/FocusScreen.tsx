@@ -5,17 +5,19 @@ import { createTimer } from '../services/timer'
 import { latest, getInitialAnswer } from '../repos/answersRepo'
 import { fetchTasksForProject, updateTask, deleteTask } from '../repos/tasksRepo'
 import { db } from '../db'
+import { getStartOfISOWeek } from '../services/review-formatter'
 import TimerCircle from '../components/TimerCircle'
 import KeyboardShortcuts from '../components/KeyboardShortcuts'
 import TaskList from '../components/TaskList'
 import FloatingInboxButton from '../components/FloatingInboxButton'
 import ProjectNavigator from '../components/ProjectNavigator'
+import CalendarOverlay from '../components/CalendarOverlay'
 import { extractNotionLink, getNotionLinkError, hasNotionLink } from '../utils/notionLink'
 import { parseNaturalDate, describeNaturalDate } from '../utils/date-parser'
-import { FileText, SkipForward, CheckCircle, RefreshCw, ExternalLink } from 'lucide-react'
+import { FileText, SkipForward, CheckCircle, RefreshCw, ExternalLink, Calendar } from 'lucide-react'
 
 export default function FocusScreen({ projectIndex }: { projectIndex: number }) {
-  const { queue, currentProjectQuestions, setDraft, markReviewedAndNext, skipAndNext, markCompleteAndNext, archiveAndNext, somedayMaybeAndNext, loadProjectQuestions } = useApp()
+  const { queue, currentProjectQuestions, setDraft, markReviewedAndNext, skipAndNext, markCompleteAndNext, archiveAndNext, somedayMaybeAndNext, loadProjectQuestions, calendarVisible, calendarWeekOf, reviewedProjectsThisSession, toggleCalendar } = useApp()
   const project = queue[projectIndex]
   const [idx, setIdx] = useState(0)
   const [remaining, setRemaining] = useState(30)
@@ -209,6 +211,13 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
             if (projectIndex < queue.length - 1) {
               handleProjectNavigate(projectIndex + 1)
             }
+          }
+          break
+        case 'k':
+          // Ctrl+K (Windows/Linux) or Cmd+K (Mac) to toggle calendar
+          if (e.metaKey || e.ctrlKey) {
+            e.preventDefault()
+            toggleCalendar()
           }
           break
         case 'Escape':
@@ -808,8 +817,40 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
                 </span>
               )}
             </div>
-            <div className="timer-container">
-              <TimerCircle remaining={remaining} total={30} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <button
+                className="calendar-toggle-button"
+                onClick={toggleCalendar}
+                title={`View Calendar (${window.electronAPI?.platform.isMacOS ? 'Cmd' : 'Ctrl'}+K)`}
+                style={{
+                  background: 'rgba(33, 150, 243, 0.15)',
+                  border: '1px solid rgba(33, 150, 243, 0.3)',
+                  borderRadius: '8px',
+                  color: '#2196F3',
+                  padding: '8px 16px',
+                  fontSize: '0.9em',
+                  fontWeight: '500',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.background = 'rgba(33, 150, 243, 0.25)'
+                  e.currentTarget.style.borderColor = 'rgba(33, 150, 243, 0.5)'
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.background = 'rgba(33, 150, 243, 0.15)'
+                  e.currentTarget.style.borderColor = 'rgba(33, 150, 243, 0.3)'
+                }}
+              >
+                <Calendar size={18} />
+                Calendar
+              </button>
+              <div className="timer-container">
+                <TimerCircle remaining={remaining} total={30} />
+              </div>
             </div>
           </div>
         </div>
@@ -943,17 +984,6 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
             <div className="no-tasks-message">
               <p>Loading tasks...</p>
             </div>
-          ) : projectTasks.length === 0 ? (
-            <div className="no-tasks-message">
-              <p>No tasks for this project.</p>
-              <button 
-                className="refresh-tasks-btn"
-                onClick={loadProjectTasks}
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
-              >
-                <RefreshCw size={16} /> Refresh Tasks
-              </button>
-            </div>
           ) : (
             <TaskList
               projectId={project.id}
@@ -1027,6 +1057,15 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
         ✓ Added "{inboxTaskName}" to Inbox
       </div>
     )}
+    
+    {/* Calendar Overlay */}
+    <CalendarOverlay
+      visible={calendarVisible}
+      weekOf={calendarWeekOf}
+      currentSessionProjects={reviewedProjectsThisSession}
+      onClose={toggleCalendar}
+      isCurrentWeek={calendarWeekOf === getStartOfISOWeek()}
+    />
     
     {/* Footer with action buttons - 2-row layout */}
     <div className="focus-footer-two-row">

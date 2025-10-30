@@ -183,7 +183,17 @@ export default function TaskList({
 
       {/* Task List - Show only 3 most recent */}
       {tasks.length === 0 && !showNewTaskForm ? (
-        <div className="task-empty">No tasks yet. Click "+ Add Task" to create one.</div>
+        <div className="task-empty">
+          <div className="task-empty-cta">
+            <button 
+              className="add-task-btn"
+              onClick={() => setShowNewTaskForm(true)}
+              type="button"
+            >
+              + Add Task
+            </button>
+          </div>
+        </div>
       ) : (
         <>
           {/* Simplified flat list - show top 3 tasks only */}
