@@ -26,6 +26,7 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
   const [loadingContexts, setLoadingContexts] = useState(false)
   const [showContextDropdown, setShowContextDropdown] = useState(false)
   const [filteredContexts, setFilteredContexts] = useState<Array<{id: string; name: string}>>([])
+  const [highlightedIndex, setHighlightedIndex] = useState(-1)
   
   // Natural language date state
   const [naturalDueDate, setNaturalDueDate] = useState('')
@@ -133,6 +134,18 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
     }
     console.log('[TaskForm] Filtered contexts:', filteredContexts.length, 'Show dropdown:', showContextDropdown)
   }, [context, availableContexts])
+
+  // Reset highlighted index when filtered contexts change
+  useEffect(() => {
+    setHighlightedIndex(-1)
+  }, [filteredContexts])
+
+  // Reset highlighted index when dropdown closes
+  useEffect(() => {
+    if (!showContextDropdown) {
+      setHighlightedIndex(-1)
+    }
+  }, [showContextDropdown])
 
   // Handle natural language due date input
   useEffect(() => {
@@ -282,6 +295,39 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
     } else if (e.key === 'Escape') {
       onCancel()
     }
+  }
+
+  const handleContextKeyDown = (e: React.KeyboardEvent) => {
+    // Handle keyboard navigation for context dropdown
+    // Limit navigation to displayed items (max 8)
+    const maxVisibleIndex = Math.min(7, filteredContexts.length - 1)
+    
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      if (filteredContexts.length > 0) {
+        setShowContextDropdown(true)
+        setHighlightedIndex(prev => {
+          if (prev < 0) return 0
+          return Math.min(prev + 1, maxVisibleIndex)
+        })
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      if (showContextDropdown && filteredContexts.length > 0) {
+        setHighlightedIndex(prev => Math.max(0, prev - 1))
+      }
+    } else if (e.key === 'Enter') {
+      if (showContextDropdown && highlightedIndex >= 0 && highlightedIndex <= maxVisibleIndex && filteredContexts.length > 0) {
+        e.preventDefault()
+        const selectedContext = filteredContexts[highlightedIndex]
+        setContext(selectedContext.name)
+        setShowContextDropdown(false)
+        return // Don't propagate Enter to parent handler
+      }
+    }
+    
+    // For other keys, call parent handler
+    handleKeyDown(e)
   }
 
   return (
@@ -441,19 +487,20 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
               setShowContextDropdown(true)
             }}
             onBlur={() => setTimeout(() => setShowContextDropdown(false), 200)}
-            onKeyDown={handleKeyDown}
+            onKeyDown={handleContextKeyDown}
             placeholder="Type or select context"
           />
           {showContextDropdown && filteredContexts.length > 0 && (
             <div className="context-dropdown">
-              {filteredContexts.slice(0, 8).map(ctx => (
+              {filteredContexts.slice(0, 8).map((ctx, index) => (
                 <div
                   key={ctx.id}
-                  className="context-option"
+                  className={`context-option ${index === highlightedIndex ? 'highlighted' : ''}`}
                   onClick={() => {
                     setContext(ctx.name)
                     setShowContextDropdown(false)
                   }}
+                  onMouseEnter={() => setHighlightedIndex(index)}
                 >
                   {ctx.name}
                 </div>
