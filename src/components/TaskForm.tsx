@@ -56,6 +56,71 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
     fetchContexts()
   }, [])
 
+  // Helpers: sanitize and fuzzy-match context/tag names against available contexts
+  const normalizeContextInput = (value: string): string => {
+    return value.trim().replace(/[\s,]+$/g, '')
+  }
+
+  // Simple Levenshtein distance for small strings
+  const levenshtein = (a: string, b: string): number => {
+    const m = a.length
+    const n = b.length
+    if (m === 0) return n
+    if (n === 0) return m
+    const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0))
+    for (let i = 0; i <= m; i++) dp[i][0] = i
+    for (let j = 0; j <= n; j++) dp[0][j] = j
+    for (let i = 1; i <= m; i++) {
+      for (let j = 1; j <= n; j++) {
+        const cost = a[i - 1] === b[j - 1] ? 0 : 1
+        dp[i][j] = Math.min(
+          dp[i - 1][j] + 1,
+          dp[i][j - 1] + 1,
+          dp[i - 1][j - 1] + cost
+        )
+      }
+    }
+    return dp[m][n]
+  }
+
+  const bestContextMatch = (
+    rawInput: string,
+    contexts: Array<{ id: string; name: string }>
+  ): { match?: { id: string; name: string }; ambiguous?: boolean } => {
+    const input = normalizeContextInput(rawInput)
+    if (!input) return {}
+    const lower = input.toLowerCase()
+    const names = contexts.map(c => ({ ...c, lower: c.name.toLowerCase() }))
+
+    // 1) Exact (case-insensitive)
+    const exact = names.find(c => c.lower === lower)
+    if (exact) return { match: { id: exact.id, name: exact.name } }
+
+    // 2) startsWith
+    const starts = names.filter(c => c.lower.startsWith(lower))
+    if (starts.length === 1) return { match: { id: starts[0].id, name: starts[0].name } }
+    if (starts.length > 1) return { ambiguous: true }
+
+    // 3) includes
+    const incl = names.filter(c => c.lower.includes(lower))
+    if (incl.length === 1) return { match: { id: incl[0].id, name: incl[0].name } }
+    if (incl.length > 1) return { ambiguous: true }
+
+    // 4) Levenshtein distance threshold <= 2
+    let best: { id: string; name: string } | undefined
+    let bestDist = Number.MAX_SAFE_INTEGER
+    for (const c of names) {
+      const d = levenshtein(lower, c.lower)
+      if (d < bestDist) {
+        bestDist = d
+        best = { id: c.id, name: c.name }
+      }
+    }
+    if (best && bestDist <= 2) return { match: best }
+
+    return {}
+  }
+
   // Filter contexts as user types
   useEffect(() => {
     if (context.trim() === '') {
@@ -123,6 +188,28 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
       return
     }
 
+    // Resolve and validate context if provided
+    let finalContext: string | undefined = undefined
+    if (context && context.trim()) {
+      const normalized = normalizeContextInput(context)
+      if (!availableContexts || availableContexts.length === 0) {
+        setError('Contexts are still loading. Please try again in a moment.')
+        return
+      }
+      const { match, ambiguous } = bestContextMatch(normalized, availableContexts)
+      if (ambiguous) {
+        setError('Multiple matching contexts found. Please pick from the dropdown.')
+        setShowContextDropdown(true)
+        return
+      }
+      if (!match) {
+        setError('Context not found. Please pick an existing tag.')
+        setShowContextDropdown(true)
+        return
+      }
+      finalContext = match.name
+    }
+
     if (isEditMode) {
       // Edit mode - return partial updates
       const updates: Partial<TaskDTO> = {
@@ -141,8 +228,8 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
         updates.deferDate = undefined
       }
 
-      if (context.trim()) {
-        updates.context = context.trim()
+      if (finalContext) {
+        updates.context = finalContext
       } else {
         updates.context = undefined
       }
@@ -163,7 +250,7 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
         flagged: false,
         completed: false,
         note: note.trim() || undefined,
-        context: context.trim() || undefined,
+        context: finalContext || undefined,
         dueDate: dueDate ? createDueDate(dueDate) : undefined,
         deferDate: deferDate ? createDeferDate(deferDate) : undefined,
       }
@@ -225,7 +312,17 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
             <button
               type="button"
               className="calendar-button"
-              onClick={() => setShowDueDatePicker(!showDueDatePicker)}
+              onClick={() => {
+                setShowDueDatePicker(true)
+                // Focus the date input to trigger the native calendar
+                setTimeout(() => {
+                  const dateInput = document.querySelector('.date-picker-dropdown .task-date-input') as HTMLInputElement
+                  if (dateInput) {
+                    dateInput.focus()
+                    dateInput.showPicker?.()
+                  }
+                }, 10)
+              }}
               title="Open calendar picker"
             >
               📅
@@ -276,7 +373,18 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
             <button
               type="button"
               className="calendar-button"
-              onClick={() => setShowDeferDatePicker(!showDeferDatePicker)}
+              onClick={() => {
+                setShowDeferDatePicker(true)
+                // Focus the date input to trigger the native calendar
+                setTimeout(() => {
+                  const dateInputs = document.querySelectorAll('.date-picker-dropdown .task-date-input')
+                  const dateInput = dateInputs[dateInputs.length - 1] as HTMLInputElement
+                  if (dateInput) {
+                    dateInput.focus()
+                    dateInput.showPicker?.()
+                  }
+                }, 10)
+              }}
               title="Open calendar picker"
             >
               📅
