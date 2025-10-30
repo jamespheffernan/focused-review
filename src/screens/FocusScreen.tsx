@@ -810,13 +810,15 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
       <div className="focus-center-column">
         <div className="focus-header-right">
           <div className="project-info">
-            <ProjectNavigator 
-              currentIndex={projectIndex}
-              queue={queue}
-              onNavigate={handleProjectNavigate}
-            />
-            <div className="project-name">
-              Project: {project.name}
+            <div className="project-header-row title">
+              <div className="project-name">Project: {project.name}</div>
+            </div>
+            <div className="project-header-row actions">
+              <ProjectNavigator 
+                currentIndex={projectIndex}
+                queue={queue}
+                onNavigate={handleProjectNavigate}
+              />
               <button 
                 className="omnifocus-button" 
                 onClick={openInOmniFocus} 
@@ -834,8 +836,6 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
                   <FileText size={20} />
                 </span>
               )}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <button
                 className="calendar-toggle-button"
                 onClick={toggleCalendar}
