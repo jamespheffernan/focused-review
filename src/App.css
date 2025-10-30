@@ -1886,6 +1886,12 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
+/* Accessible keyboard focus outline for Yes/No buttons */
+.yes-no-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
 /* Context Answers Display */
 .context-answers-section {
   margin: 1.5rem 0;
