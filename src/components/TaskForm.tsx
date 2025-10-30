@@ -300,67 +300,6 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
 
       <div className="editor-row">
         <div className="editor-field">
-          <label className="field-label">Due Date</label>
-          <div className="date-input-container">
-            <input
-              className="task-natural-date-input"
-              type="text"
-              value={naturalDueDate}
-              onChange={(e) => setNaturalDueDate(e.target.value)}
-              placeholder="Type: tomorrow, next Friday, in 2 weeks..."
-            />
-            <button
-              type="button"
-              className="calendar-button"
-              onClick={() => {
-                setShowDueDatePicker(true)
-                // Focus the date input to trigger the native calendar
-                setTimeout(() => {
-                  const dateInput = document.querySelector('.date-picker-dropdown .task-date-input') as HTMLInputElement
-                  if (dateInput) {
-                    dateInput.focus()
-                    dateInput.showPicker?.()
-                  }
-                }, 10)
-              }}
-              title="Open calendar picker"
-            >
-              📅
-            </button>
-          </div>
-          {showDueDatePicker && (
-            <div className="date-picker-dropdown">
-              <input
-                className="task-date-input"
-                type="date"
-                value={dueDate}
-                onChange={(e) => {
-                  setDueDate(e.target.value)
-                  // Update natural language input to match
-                  if (e.target.value) {
-                    const date = new Date(e.target.value)
-                    const natural = date.toLocaleDateString('en-US', { 
-                      weekday: 'long', 
-                      year: 'numeric', 
-                      month: 'long', 
-                      day: 'numeric' 
-                    })
-                    setNaturalDueDate(natural)
-                  }
-                }}
-                placeholder="Due date"
-                autoFocus
-              />
-            </div>
-          )}
-          {dueDatePreview && (
-            <div style={{ fontSize: '0.8em', color: '#4CAF50', marginTop: '2px' }}>
-              ✓ {dueDatePreview}
-            </div>
-          )}
-        </div>
-
-        <div className="editor-field">
           <label className="field-label">Defer Date</label>
           <div className="date-input-container">
             <input
@@ -418,6 +357,67 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
           {deferDatePreview && (
             <div style={{ fontSize: '0.8em', color: '#4CAF50', marginTop: '2px' }}>
               ✓ {deferDatePreview}
+            </div>
+          )}
+        </div>
+
+        <div className="editor-field">
+          <label className="field-label">Due Date</label>
+          <div className="date-input-container">
+            <input
+              className="task-natural-date-input"
+              type="text"
+              value={naturalDueDate}
+              onChange={(e) => setNaturalDueDate(e.target.value)}
+              placeholder="Type: tomorrow, next Friday, in 2 weeks..."
+            />
+            <button
+              type="button"
+              className="calendar-button"
+              onClick={() => {
+                setShowDueDatePicker(true)
+                // Focus the date input to trigger the native calendar
+                setTimeout(() => {
+                  const dateInput = document.querySelector('.date-picker-dropdown .task-date-input') as HTMLInputElement
+                  if (dateInput) {
+                    dateInput.focus()
+                    dateInput.showPicker?.()
+                  }
+                }, 10)
+              }}
+              title="Open calendar picker"
+            >
+              📅
+            </button>
+          </div>
+          {showDueDatePicker && (
+            <div className="date-picker-dropdown">
+              <input
+                className="task-date-input"
+                type="date"
+                value={dueDate}
+                onChange={(e) => {
+                  setDueDate(e.target.value)
+                  // Update natural language input to match
+                  if (e.target.value) {
+                    const date = new Date(e.target.value)
+                    const natural = date.toLocaleDateString('en-US', { 
+                      weekday: 'long', 
+                      year: 'numeric', 
+                      month: 'long', 
+                      day: 'numeric' 
+                    })
+                    setNaturalDueDate(natural)
+                  }
+                }}
+                placeholder="Due date"
+                autoFocus
+              />
+            </div>
+          )}
+          {dueDatePreview && (
+            <div style={{ fontSize: '0.8em', color: '#4CAF50', marginTop: '2px' }}>
+              ✓ {dueDatePreview}
             </div>
           )}
         </div>
