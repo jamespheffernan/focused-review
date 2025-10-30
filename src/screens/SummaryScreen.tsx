@@ -1,18 +1,26 @@
-import { useApp } from '../store'
 import { useEffect, useState } from 'react'
 import { db } from '../db'
+import { getStartOfISOWeek } from '../services/review-formatter'
+import { getCommitmentsForWeek } from '../repos/timelineCommitmentsRepo'
+import { exportCalendarAsPNG } from '../utils/calendar-export'
+import CalendarGanttChart from '../components/CalendarGanttChart'
+import type { TimelineCommitmentDTO } from '../types'
+import { Calendar, Download } from 'lucide-react'
 
 export default function SummaryScreen() {
-  const { gotoSummary } = useApp()
   const [sessionStats, setSessionStats] = useState({
     projectsReviewed: 0,
     projectsSkipped: 0,
     totalTime: 0,
     avgTimePerProject: 0
   })
+  const [showCalendar, setShowCalendar] = useState(false)
+  const [commitments, setCommitments] = useState<TimelineCommitmentDTO[]>([])
+  const [exporting, setExporting] = useState(false)
   
   useEffect(() => {
     loadSessionStats()
+    loadCommitments()
   }, [])
 
   const loadSessionStats = async () => {
@@ -29,6 +37,33 @@ export default function SummaryScreen() {
       }
     } catch (error) {
       console.error('Error loading session stats:', error)
+    }
+  }
+
+  const loadCommitments = async () => {
+    try {
+      const weekOf = getStartOfISOWeek()
+      const weekCommitments = await getCommitmentsForWeek(weekOf)
+      setCommitments(weekCommitments)
+      console.log(`📅 Loaded ${weekCommitments.length} commitments for summary screen`)
+    } catch (error) {
+      console.error('Error loading commitments:', error)
+    }
+  }
+
+  const handleExportCalendar = async () => {
+    if (exporting) return
+    
+    setExporting(true)
+    try {
+      const weekOf = getStartOfISOWeek()
+      await exportCalendarAsPNG(weekOf)
+      console.log('✅ Calendar exported successfully from summary screen')
+    } catch (error) {
+      console.error('❌ Calendar export failed:', error)
+      alert('Failed to export calendar. Please try again.')
+    } finally {
+      setExporting(false)
     }
   }
 
@@ -98,16 +133,99 @@ export default function SummaryScreen() {
             This regular practice will help you stay focused and productive.
           </p>
           
-          <div className="actions">
-            <button 
-              className="primary" 
-              onClick={() => gotoSummary()}
-              style={{ fontSize: '1.2em', padding: '20px 40px' }}
-            >
-              Start New Review
-            </button>
-          </div>
+          {/* Start New Review button removed as it doesn't fit the summary context */}
         </div>
+
+        {/* Calendar Section */}
+        {commitments.length > 0 && (
+          <div style={{
+            background: 'rgba(255, 255, 255, 0.05)',
+            borderRadius: '16px',
+            padding: '24px',
+            border: '1px solid rgba(255, 255, 255, 0.15)',
+            marginTop: '20px'
+          }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: '20px'
+            }}>
+              <h3 style={{
+                margin: 0,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                fontSize: '1.3em'
+              }}>
+                <Calendar size={24} />
+                Timeline Commitments
+                <span style={{
+                  fontSize: '0.7em',
+                  padding: '4px 12px',
+                  background: 'rgba(33, 150, 243, 0.2)',
+                  border: '1px solid rgba(33, 150, 243, 0.4)',
+                  borderRadius: '12px',
+                  color: '#2196F3',
+                  fontWeight: '500'
+                }}>
+                  {commitments.length}
+                </span>
+              </h3>
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <button
+                  onClick={() => setShowCalendar(!showCalendar)}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    borderRadius: '8px',
+                    color: 'white',
+                    padding: '8px 16px',
+                    fontSize: '0.9em',
+                    fontWeight: '500',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  {showCalendar ? 'Hide' : 'Show'} Calendar
+                </button>
+                <button
+                  onClick={handleExportCalendar}
+                  disabled={exporting}
+                  style={{
+                    background: 'rgba(76, 175, 80, 0.15)',
+                    border: '1px solid rgba(76, 175, 80, 0.3)',
+                    borderRadius: '8px',
+                    color: '#4CAF50',
+                    padding: '8px 16px',
+                    fontSize: '0.9em',
+                    fontWeight: '500',
+                    cursor: exporting ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    opacity: exporting ? 0.5 : 1,
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  <Download size={16} />
+                  {exporting ? 'Exporting...' : 'Download PNG'}
+                </button>
+              </div>
+            </div>
+            
+            {showCalendar && (
+              <div id="calendar-export-container" style={{
+                background: 'rgba(20, 20, 30, 0.5)',
+                borderRadius: '12px',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                overflow: 'hidden'
+              }}>
+                <CalendarGanttChart commitments={commitments} />
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
