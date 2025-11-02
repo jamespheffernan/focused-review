@@ -67,9 +67,6 @@
   display: flex;
   gap: 1rem;
   align-items: center;
-  /* Persistent outline for clear delineation */
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
 }
 
 .add-package-form h3 {
@@ -89,9 +86,6 @@
   border-radius: 12px;
   padding: 1.5rem;
   transition: all 0.2s ease;
-  /* Persistent outline for clear delineation */
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
 }
 
 .package-card:hover {
@@ -161,9 +155,6 @@
   border-radius: 12px;
   padding: 1.5rem;
   margin-bottom: 1.5rem;
-  /* Persistent outline for clear delineation */
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
 }
 
 .editor-header {
@@ -227,14 +218,12 @@
   color: var(--text-primary);
   font-size: 0.9rem;
   transition: border-color 0.2s ease;
-  /* Persistent outline so fields are clearly identifiable */
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
 }
 
 .form-group input:focus,
 .form-group select:focus,
 .form-group textarea:focus {
+  outline: none;
   border-color: var(--accent);
 }
 

@@ -5,20 +5,17 @@ import { createTimer } from '../services/timer'
 import { latest, getInitialAnswer } from '../repos/answersRepo'
 import { fetchTasksForProject, updateTask, deleteTask } from '../repos/tasksRepo'
 import { db } from '../db'
-import { getStartOfISOWeek } from '../services/review-formatter'
 import TimerCircle from '../components/TimerCircle'
 import KeyboardShortcuts from '../components/KeyboardShortcuts'
 import TaskList from '../components/TaskList'
 import FloatingInboxButton from '../components/FloatingInboxButton'
 import ProjectNavigator from '../components/ProjectNavigator'
-import CalendarOverlay from '../components/CalendarOverlay'
-import ActionConfirmationOverlay from '../components/ActionConfirmationOverlay'
 import { extractNotionLink, getNotionLinkError, hasNotionLink } from '../utils/notionLink'
 import { parseNaturalDate, describeNaturalDate } from '../utils/date-parser'
-import { FileText, SkipForward, CheckCircle, RefreshCw, ExternalLink, Calendar } from 'lucide-react'
+import { FileText, SkipForward, CheckCircle, RefreshCw, ExternalLink } from 'lucide-react'
 
 export default function FocusScreen({ projectIndex }: { projectIndex: number }) {
-  const { queue, currentProjectQuestions, setDraft, markReviewedAndNext, skipAndNext, markCompleteAndNext, archiveAndNext, somedayMaybeAndNext, loadProjectQuestions, calendarVisible, calendarWeekOf, reviewedProjectsThisSession, toggleCalendar } = useApp()
+  const { queue, currentProjectQuestions, setDraft, markReviewedAndNext, skipAndNext, markCompleteAndNext, archiveAndNext, somedayMaybeAndNext, loadProjectQuestions } = useApp()
   const project = queue[projectIndex]
   const [idx, setIdx] = useState(0)
   const [remaining, setRemaining] = useState(30)
@@ -34,9 +31,6 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
   const [datePreview, setDatePreview] = useState<string | null>(null)
   const [initialAnswer, setInitialAnswer] = useState('')
   const [showConfirmation, setShowConfirmation] = useState(false)
-  const [overlayVisible, setOverlayVisible] = useState(false)
-  const [overlayMessage, setOverlayMessage] = useState<string>('')
-  const [overlayVariant, setOverlayVariant] = useState<'review' | 'dropped' | 'someday'>('review')
   const [showInboxSuccess, setShowInboxSuccess] = useState(false)
   const [inboxTaskName, setInboxTaskName] = useState('')
   // Local state to track dynamically injected followup questions
@@ -90,9 +84,7 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
     setSelectedYesNo(null)
     setDatePreview(null)
     setInitialAnswer('')
-    setShowConfirmation(false) // Reset legacy confirmation overlay when project changes
-    setOverlayVisible(false)
-    setOverlayMessage('')
+    setShowConfirmation(false) // Reset confirmation overlay when project changes
     setShowInboxSuccess(false) // Reset inbox success overlay when project changes
     setInjectedFollowups(new Map()) // Clear injected followups when switching projects
     // Load context-aware questions for the current project
@@ -171,13 +163,6 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
         return
       }
 
-      // Handle 1 and 2 keys for yes/no questions (1 → Yes, 2 → No)
-      if (q.type === 'yes-no' && (e.key === '1' || e.key === '2')) {
-        e.preventDefault()
-        handleYesNoChange(e.key === '1')
-        return
-      }
-
       switch (e.key) {
         case 'ArrowLeft':
           e.preventDefault()
@@ -224,13 +209,6 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
             if (projectIndex < queue.length - 1) {
               handleProjectNavigate(projectIndex + 1)
             }
-          }
-          break
-        case 'k':
-          // Ctrl+K (Windows/Linux) or Cmd+K (Mac) to toggle calendar
-          if (e.metaKey || e.ctrlKey) {
-            e.preventDefault()
-            toggleCalendar()
           }
           break
         case 'Escape':
@@ -397,13 +375,11 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
     if (nextIdx >= totalQuestions) {
       // Last question - trigger completion
       console.log(`[DEBUG] Last question answered, triggering completion`)
-      setOverlayVariant('review')
-      setOverlayMessage('✓ Project Reviewed')
-      setOverlayVisible(true)
+      setShowConfirmation(true)
       setTimeout(() => {
-        setOverlayVisible(false)
+        setShowConfirmation(false)
         markReviewedAndNext(project, projectIndex)
-      }, 1000)
+      }, 1500)
     } else {
       setIdx(nextIdx)
     }
@@ -542,13 +518,11 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
     if (nextIdx >= totalQuestions) {
       // Last question - trigger completion
       console.log(`[DEBUG] Last question answered, triggering completion`)
-      setOverlayVariant('review')
-      setOverlayMessage('✓ Project Reviewed')
-      setOverlayVisible(true)
+      setShowConfirmation(true)
       setTimeout(() => {
-        setOverlayVisible(false)
+        setShowConfirmation(false)
         markReviewedAndNext(project, projectIndex)
-      }, 1000)
+      }, 1500)
     } else {
       setIdx(nextIdx)
     }
@@ -596,13 +570,11 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
     if (nextIdx >= currentTotal) {
       // Last question - show confirmation and complete the review
       console.log(`[DEBUG] Last question - triggering completion`)
-      setOverlayVariant('review')
-      setOverlayMessage('✓ Project Reviewed')
-      setOverlayVisible(true)
+      setShowConfirmation(true)
       setTimeout(() => {
-        setOverlayVisible(false)
+        setShowConfirmation(false)
         markReviewedAndNext(project, projectIndex)
-      }, 1000)
+      }, 1500)
     } else {
       // Mark current question as skipped if not answered
       const hasAnswerInArray = answeredQuestions.some(aq => aq.id === q.id && aq.status === 'answered')
@@ -631,11 +603,12 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
 
   // Function to handle mark reviewed with overlay
   function handleMarkReviewed() {
-    setOverlayVariant('review')
-    setOverlayMessage('✓ Project Reviewed')
-    setOverlayVisible(true)
+    // Show confirmation overlay
+    setShowConfirmation(true)
+    
+    // Wait 1 second, then transition
     setTimeout(() => {
-      setOverlayVisible(false)
+      setShowConfirmation(false)
       markReviewedAndNext(project, projectIndex)
     }, 1000)
   }
@@ -810,15 +783,13 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
       <div className="focus-center-column">
         <div className="focus-header-right">
           <div className="project-info">
-            <div className="project-header-row title">
-              <div className="project-name">Project: {project.name}</div>
-            </div>
-            <div className="project-header-row actions">
-              <ProjectNavigator 
-                currentIndex={projectIndex}
-                queue={queue}
-                onNavigate={handleProjectNavigate}
-              />
+            <ProjectNavigator 
+              currentIndex={projectIndex}
+              queue={queue}
+              onNavigate={handleProjectNavigate}
+            />
+            <div className="project-name">
+              Project: {project.name}
               <button 
                 className="omnifocus-button" 
                 onClick={openInOmniFocus} 
@@ -836,24 +807,9 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
                   <FileText size={20} />
                 </span>
               )}
-              <button
-                className="calendar-toggle-button"
-                onClick={toggleCalendar}
-                title={`View Calendar (${window.electronAPI?.platform.isMacOS ? 'Cmd' : 'Ctrl'}+K)`}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  padding: 0,
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center'
-                }}
-              >
-                <Calendar size={20} color="#ffffff" />
-              </button>
-              <div className="timer-container">
-                <TimerCircle remaining={remaining} total={30} />
-              </div>
+            </div>
+            <div className="timer-container">
+              <TimerCircle remaining={remaining} total={30} />
             </div>
           </div>
         </div>
@@ -987,6 +943,17 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
             <div className="no-tasks-message">
               <p>Loading tasks...</p>
             </div>
+          ) : projectTasks.length === 0 ? (
+            <div className="no-tasks-message">
+              <p>No tasks for this project.</p>
+              <button 
+                className="refresh-tasks-btn"
+                onClick={loadProjectTasks}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+              >
+                <RefreshCw size={16} /> Refresh Tasks
+              </button>
+            </div>
           ) : (
             <TaskList
               projectId={project.id}
@@ -1000,12 +967,39 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
       </div>
     </div>
     
-    {/* Action Confirmation Overlay */}
-    <ActionConfirmationOverlay
-      visible={overlayVisible}
-      message={overlayMessage}
-      variant={overlayVariant}
-    />
+    {/* Confirmation Overlay */}
+    {showConfirmation && (
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(0, 0, 0, 0.5)',
+        backdropFilter: 'blur(10px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 10000,
+        animation: 'fadeIn 0.3s ease-out'
+      }}>
+        <div style={{
+          background: 'rgba(255, 255, 255, 0.15)',
+          backdropFilter: 'blur(30px)',
+          border: '2px solid rgba(255, 255, 255, 0.3)',
+          borderRadius: '24px',
+          padding: '48px 64px',
+          textAlign: 'center',
+          fontSize: '2em',
+          fontWeight: '700',
+          color: 'white',
+          boxShadow: '0 16px 64px rgba(0, 0, 0, 0.3)',
+          animation: 'scaleIn 0.3s ease-out'
+        }}>
+          ✓ Project Reviewed
+        </div>
+      </div>
+    )}
     
     {/* Floating Inbox Button */}
     <FloatingInboxButton onCreateInboxTask={handleCreateInboxTask} />
@@ -1033,15 +1027,6 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
         ✓ Added "{inboxTaskName}" to Inbox
       </div>
     )}
-    
-    {/* Calendar Overlay */}
-    <CalendarOverlay
-      visible={calendarVisible}
-      weekOf={calendarWeekOf}
-      currentSessionProjects={reviewedProjectsThisSession}
-      onClose={toggleCalendar}
-      isCurrentWeek={calendarWeekOf === getStartOfISOWeek()}
-    />
     
     {/* Footer with action buttons - 2-row layout */}
     <div className="focus-footer-two-row">
@@ -1071,29 +1056,13 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
         </button>
         <button 
           className="action-button archive"
-          onClick={() => {
-            setOverlayVariant('dropped')
-            setOverlayMessage('✓ Project Dropped')
-            setOverlayVisible(true)
-            setTimeout(() => {
-              setOverlayVisible(false)
-              archiveAndNext(project, projectIndex)
-            }, 900)
-          }}
+          onClick={() => archiveAndNext(project, projectIndex)}
         >
           Drop
         </button>
         <button 
           className="action-button someday-maybe"
-          onClick={() => {
-            setOverlayVariant('someday')
-            setOverlayMessage('✓ Moved to Someday/Maybe')
-            setOverlayVisible(true)
-            setTimeout(() => {
-              setOverlayVisible(false)
-              somedayMaybeAndNext(project, projectIndex)
-            }, 900)
-          }}
+          onClick={() => somedayMaybeAndNext(project, projectIndex)}
         >
           Someday/Maybe
         </button>

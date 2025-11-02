@@ -79,23 +79,6 @@ export function formatReviewAsMarkdown(
 ): string {
   // Create a map of question IDs to questions for quick lookup
   const questionMap = new Map(questions.map(q => [q.id, q]))
-
-  // Synthesized prompts for dynamically injected followups
-  const synthPrompt = (id: string): { prompt: string; type: QuestionDTO['type']; baseId?: string } | null => {
-    if (id === 'pkg-alignment-subsequent-followup') {
-      return { prompt: 'Should you deprioritize it then? Why are you still doing this project?', type: 'text', baseId: 'pkg-alignment-subsequent' }
-    }
-    if (id === 'pkg-next-action-subsequent-followup') {
-      return { prompt: 'Please edit your task details and define a clear next action.', type: 'text', baseId: 'pkg-next-action-subsequent' }
-    }
-    if (id === 'pkg-timeline-subsequent-followup') {
-      return { prompt: "What's the new realistic timeline for this project?", type: 'text-parsed', baseId: 'pkg-timeline-subsequent' }
-    }
-    if (id === 'pkg-engagement-initial-followup') {
-      return { prompt: 'What would increase your engagement with this project?', type: 'text', baseId: 'pkg-engagement-initial' }
-    }
-    return null
-  }
   
   // Get current timestamp for "reviewed on" date
   const reviewedOn = formatReviewDate(new Date().toISOString())
@@ -106,22 +89,10 @@ export function formatReviewAsMarkdown(
   // Sort answers by question order, then format each answer
   const formattedAnswers = answers
     .map(answer => {
-      let question = questionMap.get(answer.questionID)
+      const question = questionMap.get(answer.questionID)
       if (!question) {
-        // Attempt to synthesize a question for known dynamic followups
-        const synth = synthPrompt(answer.questionID)
-        if (synth) {
-          const base = synth.baseId ? questionMap.get(synth.baseId) : undefined
-          question = {
-            id: answer.questionID,
-            prompt: synth.prompt,
-            type: synth.type,
-            order: base ? base.order + 0.1 : (questions.length + 0.1)
-          }
-        } else {
-          console.warn(`Question not found for answer: ${answer.questionID}`)
-          return null
-        }
+        console.warn(`Question not found for answer: ${answer.questionID}`)
+        return null
       }
       return { answer, question }
     })

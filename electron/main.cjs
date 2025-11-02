@@ -1127,76 +1127,7 @@ end tell`
         }
       } catch (asError) {
         console.error('[OmniFocus] AppleScript context update failed:', asError)
-        const msg = (asError && asError.message) ? asError.message : ''
-        const isTagNotFound = /flattened tag|Invalid index|\(-1719\)/i.test(msg)
-        if (isTagNotFound && updates.context) {
-          console.log('[OmniFocus] Attempting fuzzy match retry for context:', updates.context)
-          // Helper: fetch contexts via temporary JXA script
-          const getContexts = async () => {
-            const tempJxaPath = path.join(require('os').tmpdir(), 'get_contexts_retry_jxa.js')
-            const jxaScript = `const of = Application('OmniFocus');
-const doc = of.defaultDocument;
-let tags = [];
-try { tags = doc.flattenedTags(); } catch (e) { try { tags = doc.flattenedContexts(); } catch (e2) {} }
-const out = [];
-for (let i = 0; i < tags.length; i++) { try { out.push({ id: tags[i].id(), name: tags[i].name() }); } catch (e) {} }
-JSON.stringify(out);`
-            await fs.writeFile(tempJxaPath, jxaScript)
-            const { stdout } = await execAsync(`osascript -l JavaScript "${tempJxaPath}"`)
-            try { await fs.unlink(tempJxaPath) } catch {}
-            try { return JSON.parse(stdout || '[]') } catch { return [] }
-          }
-          const normalize = (s) => (s || '').trim().replace(/[\s,]+$/g, '')
-          const levenshtein = (a, b) => {
-            const m = a.length, n = b.length
-            if (!m) return n; if (!n) return m
-            const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0))
-            for (let i = 0; i <= m; i++) dp[i][0] = i
-            for (let j = 0; j <= n; j++) dp[0][j] = j
-            for (let i = 1; i <= m; i++) {
-              for (let j = 1; j <= n; j++) {
-                const cost = a[i - 1] === b[j - 1] ? 0 : 1
-                dp[i][j] = Math.min(dp[i-1][j] + 1, dp[i][j-1] + 1, dp[i-1][j-1] + cost)
-              }
-            }
-            return dp[m][n]
-          }
-          const bestMatch = (input, list) => {
-            const needle = normalize(input).toLowerCase()
-            if (!needle) return {}
-            const names = list.map(t => ({ id: t.id, name: t.name, lower: (t.name||'').toLowerCase() }))
-            const exact = names.find(t => t.lower === needle); if (exact) return { name: exact.name }
-            const starts = names.filter(t => t.lower.startsWith(needle)); if (starts.length === 1) return { name: starts[0].name }; if (starts.length > 1) return { ambiguous: true }
-            const incl = names.filter(t => t.lower.includes(needle)); if (incl.length === 1) return { name: incl[0].name }; if (incl.length > 1) return { ambiguous: true }
-            let best = null, bestDist = Number.MAX_SAFE_INTEGER
-            for (const t of names) { const d = levenshtein(needle, t.lower); if (d < bestDist) { bestDist = d; best = t } }
-            if (best && bestDist <= 2) return { name: best.name }
-            return {}
-          }
-          try {
-            const contexts = await getContexts()
-            const { name, ambiguous } = bestMatch(updates.context, contexts)
-            if (ambiguous || !name) {
-              console.error('[OmniFocus] Fuzzy retry failed: ambiguous or no match')
-              return { success: false, error: `Context update failed: ${asError.message}` }
-            }
-            console.log('[OmniFocus] Fuzzy retry with matched context:', name)
-            const retryScript = `tell application "OmniFocus"
-  tell default document
-    set theTask to first flattened task whose id is "${taskId}"
-    set theTag to first flattened tag whose name is "${name.replace(/'/g, "\\'")}"
-    set primary tag of theTask to theTag
-  end tell
-end tell`
-            await execAsync(`osascript -e '${retryScript.replace(/'/g, "'\\''")}'`)
-            console.log('[OmniFocus] Context set via AppleScript (fuzzy retry)')
-          } catch (retryErr) {
-            console.error('[OmniFocus] Fuzzy retry failed:', retryErr)
-            return { success: false, error: `Context update failed: ${asError.message}` }
-          }
-        } else {
-          return { success: false, error: `Context update failed: ${asError.message}` }
-        }
+        return { success: false, error: `Context update failed: ${asError.message}` }
       }
     }
     

@@ -187,8 +187,8 @@ body {
 
 .project-info {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  align-items: center;
+  gap: 16px;
   background: rgba(255, 255, 255, 0.15);
   border-radius: 12px;
   padding: 16px 20px;
@@ -199,26 +199,6 @@ body {
 .project-name {
   font-weight: 600;
   font-size: 1.1em;
-  white-space: normal;
-  word-break: break-word;
-}
-
-/* Focus header rows */
-.project-header-row.title {
-  display: flex;
-  align-items: flex-start;
-  gap: 16px;
-}
-
-.project-header-row.title .project-name {
-  flex: 1;
-}
-
-.project-header-row.actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
 }
 
 .timer-container {

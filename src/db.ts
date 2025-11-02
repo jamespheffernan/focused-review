@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie'
-import type { ProjectDTO, AnswerDraft, SessionDTO, TaskDTO, NotionSyncQueueItem, QuestionDTO, QuestionPackageDTO, TimelineCommitmentDTO } from './types'
+import type { ProjectDTO, AnswerDraft, SessionDTO, TaskDTO, NotionSyncQueueItem, QuestionDTO, QuestionPackageDTO } from './types'
 
 export class ReviewDB extends Dexie {
   projects!: Table<ProjectDTO, string>
@@ -9,7 +9,6 @@ export class ReviewDB extends Dexie {
   notionSyncQueue!: Table<NotionSyncQueueItem, string>
   questions!: Table<QuestionDTO, string>
   questionPackages!: Table<QuestionPackageDTO, string>
-  timelineCommitments!: Table<TimelineCommitmentDTO, string>
   constructor() {
     super('reviewhud')
     this.version(1).stores({
@@ -81,17 +80,6 @@ export class ReviewDB extends Dexie {
       notionSyncQueue: 'id, projectId, weekOf, status, nextRetry, [projectId+weekOf]',
       questions: 'id, category, [category+order]',
       questionPackages: 'id, order'
-    })
-    // Version 10: Add timelineCommitments table for calendar feature
-    this.version(10).stores({
-      projects: 'id, lastReviewed, status, nextReviewDate',
-      answers: 'id, projectID, questionID, weekOf, parentAnswerId, parsedDate, [projectID+questionID], [projectID+weekOf]',
-      sessions: 'id, startedAt',
-      tasks: 'id, projectId, status, completed, [projectId+status], [projectId+completed], dueDate, flagged, lastModified, syncState',
-      notionSyncQueue: 'id, projectId, weekOf, status, nextRetry, [projectId+weekOf]',
-      questions: 'id, category, [category+order]',
-      questionPackages: 'id, order',
-      timelineCommitments: 'id, projectId, weekOf, committedDate, [projectId+weekOf]'
     })
   }
 }

@@ -54,9 +54,6 @@ export function parseNaturalDate(text: string): string | null {
  * Get a human-friendly description of what a natural date string represents
  * Useful for showing feedback to users
  * 
- * Applies the same future-correction logic as parseNaturalDate to ensure
- * preview matches the saved date value.
- * 
  * @param text Natural language date string
  * @returns Formatted date string or null
  */
@@ -68,22 +65,7 @@ export function describeNaturalDate(text: string): string | null {
   try {
     const result = chrono.parseDate(text);
     if (result) {
-      // Check if date is in the past (before today at midnight)
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      
-      let dateToFormat = result;
-      
-      if (result < today) {
-        // Retry with "next " prepended to get a future date
-        const retryResult = chrono.parseDate(`next ${text}`);
-        if (retryResult && retryResult >= today) {
-          // Use the future date instead
-          dateToFormat = retryResult;
-        }
-      }
-      
-      return dateToFormat.toLocaleDateString('en-US', { 
+      return result.toLocaleDateString('en-US', { 
         weekday: 'short',
         year: 'numeric', 
         month: 'short', 

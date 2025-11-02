@@ -26,7 +26,6 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
   const [loadingContexts, setLoadingContexts] = useState(false)
   const [showContextDropdown, setShowContextDropdown] = useState(false)
   const [filteredContexts, setFilteredContexts] = useState<Array<{id: string; name: string}>>([])
-  const [highlightedIndex, setHighlightedIndex] = useState(-1)
   
   // Natural language date state
   const [naturalDueDate, setNaturalDueDate] = useState('')
@@ -57,71 +56,6 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
     fetchContexts()
   }, [])
 
-  // Helpers: sanitize and fuzzy-match context/tag names against available contexts
-  const normalizeContextInput = (value: string): string => {
-    return value.trim().replace(/[\s,]+$/g, '')
-  }
-
-  // Simple Levenshtein distance for small strings
-  const levenshtein = (a: string, b: string): number => {
-    const m = a.length
-    const n = b.length
-    if (m === 0) return n
-    if (n === 0) return m
-    const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0))
-    for (let i = 0; i <= m; i++) dp[i][0] = i
-    for (let j = 0; j <= n; j++) dp[0][j] = j
-    for (let i = 1; i <= m; i++) {
-      for (let j = 1; j <= n; j++) {
-        const cost = a[i - 1] === b[j - 1] ? 0 : 1
-        dp[i][j] = Math.min(
-          dp[i - 1][j] + 1,
-          dp[i][j - 1] + 1,
-          dp[i - 1][j - 1] + cost
-        )
-      }
-    }
-    return dp[m][n]
-  }
-
-  const bestContextMatch = (
-    rawInput: string,
-    contexts: Array<{ id: string; name: string }>
-  ): { match?: { id: string; name: string }; ambiguous?: boolean } => {
-    const input = normalizeContextInput(rawInput)
-    if (!input) return {}
-    const lower = input.toLowerCase()
-    const names = contexts.map(c => ({ ...c, lower: c.name.toLowerCase() }))
-
-    // 1) Exact (case-insensitive)
-    const exact = names.find(c => c.lower === lower)
-    if (exact) return { match: { id: exact.id, name: exact.name } }
-
-    // 2) startsWith
-    const starts = names.filter(c => c.lower.startsWith(lower))
-    if (starts.length === 1) return { match: { id: starts[0].id, name: starts[0].name } }
-    if (starts.length > 1) return { ambiguous: true }
-
-    // 3) includes
-    const incl = names.filter(c => c.lower.includes(lower))
-    if (incl.length === 1) return { match: { id: incl[0].id, name: incl[0].name } }
-    if (incl.length > 1) return { ambiguous: true }
-
-    // 4) Levenshtein distance threshold <= 2
-    let best: { id: string; name: string } | undefined
-    let bestDist = Number.MAX_SAFE_INTEGER
-    for (const c of names) {
-      const d = levenshtein(lower, c.lower)
-      if (d < bestDist) {
-        bestDist = d
-        best = { id: c.id, name: c.name }
-      }
-    }
-    if (best && bestDist <= 2) return { match: best }
-
-    return {}
-  }
-
   // Filter contexts as user types
   useEffect(() => {
     if (context.trim() === '') {
@@ -134,18 +68,6 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
     }
     console.log('[TaskForm] Filtered contexts:', filteredContexts.length, 'Show dropdown:', showContextDropdown)
   }, [context, availableContexts])
-
-  // Reset highlighted index when filtered contexts change
-  useEffect(() => {
-    setHighlightedIndex(-1)
-  }, [filteredContexts])
-
-  // Reset highlighted index when dropdown closes
-  useEffect(() => {
-    if (!showContextDropdown) {
-      setHighlightedIndex(-1)
-    }
-  }, [showContextDropdown])
 
   // Handle natural language due date input
   useEffect(() => {
@@ -201,28 +123,6 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
       return
     }
 
-    // Resolve and validate context if provided
-    let finalContext: string | undefined = undefined
-    if (context && context.trim()) {
-      const normalized = normalizeContextInput(context)
-      if (!availableContexts || availableContexts.length === 0) {
-        setError('Contexts are still loading. Please try again in a moment.')
-        return
-      }
-      const { match, ambiguous } = bestContextMatch(normalized, availableContexts)
-      if (ambiguous) {
-        setError('Multiple matching contexts found. Please pick from the dropdown.')
-        setShowContextDropdown(true)
-        return
-      }
-      if (!match) {
-        setError('Context not found. Please pick an existing tag.')
-        setShowContextDropdown(true)
-        return
-      }
-      finalContext = match.name
-    }
-
     if (isEditMode) {
       // Edit mode - return partial updates
       const updates: Partial<TaskDTO> = {
@@ -241,8 +141,8 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
         updates.deferDate = undefined
       }
 
-      if (finalContext) {
-        updates.context = finalContext
+      if (context.trim()) {
+        updates.context = context.trim()
       } else {
         updates.context = undefined
       }
@@ -263,7 +163,7 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
         flagged: false,
         completed: false,
         note: note.trim() || undefined,
-        context: finalContext || undefined,
+        context: context.trim() || undefined,
         dueDate: dueDate ? createDueDate(dueDate) : undefined,
         deferDate: deferDate ? createDeferDate(deferDate) : undefined,
       }
@@ -297,39 +197,6 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
     }
   }
 
-  const handleContextKeyDown = (e: React.KeyboardEvent) => {
-    // Handle keyboard navigation for context dropdown
-    // Limit navigation to displayed items (max 8)
-    const maxVisibleIndex = Math.min(7, filteredContexts.length - 1)
-    
-    if (e.key === 'ArrowDown') {
-      e.preventDefault()
-      if (filteredContexts.length > 0) {
-        setShowContextDropdown(true)
-        setHighlightedIndex(prev => {
-          if (prev < 0) return 0
-          return Math.min(prev + 1, maxVisibleIndex)
-        })
-      }
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault()
-      if (showContextDropdown && filteredContexts.length > 0) {
-        setHighlightedIndex(prev => Math.max(0, prev - 1))
-      }
-    } else if (e.key === 'Enter') {
-      if (showContextDropdown && highlightedIndex >= 0 && highlightedIndex <= maxVisibleIndex && filteredContexts.length > 0) {
-        e.preventDefault()
-        const selectedContext = filteredContexts[highlightedIndex]
-        setContext(selectedContext.name)
-        setShowContextDropdown(false)
-        return // Don't propagate Enter to parent handler
-      }
-    }
-    
-    // For other keys, call parent handler
-    handleKeyDown(e)
-  }
-
   return (
     <div className="task-editor-inline">
       <div className="editor-field">
@@ -346,68 +213,6 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
 
       <div className="editor-row">
         <div className="editor-field">
-          <label className="field-label">Defer Date</label>
-          <div className="date-input-container">
-            <input
-              className="task-natural-date-input"
-              type="text"
-              value={naturalDeferDate}
-              onChange={(e) => setNaturalDeferDate(e.target.value)}
-              placeholder="Type: tomorrow, next Friday, in 2 weeks..."
-            />
-            <button
-              type="button"
-              className="calendar-button"
-              onClick={() => {
-                setShowDeferDatePicker(true)
-                // Focus the date input to trigger the native calendar
-                setTimeout(() => {
-                  const dateInputs = document.querySelectorAll('.date-picker-dropdown .task-date-input')
-                  const dateInput = dateInputs[dateInputs.length - 1] as HTMLInputElement
-                  if (dateInput) {
-                    dateInput.focus()
-                    dateInput.showPicker?.()
-                  }
-                }, 10)
-              }}
-              title="Open calendar picker"
-            >
-              📅
-            </button>
-          </div>
-          {showDeferDatePicker && (
-            <div className="date-picker-dropdown">
-              <input
-                className="task-date-input"
-                type="date"
-                value={deferDate}
-                onChange={(e) => {
-                  setDeferDate(e.target.value)
-                  // Update natural language input to match
-                  if (e.target.value) {
-                    const date = new Date(e.target.value)
-                    const natural = date.toLocaleDateString('en-US', { 
-                      weekday: 'long', 
-                      year: 'numeric', 
-                      month: 'long', 
-                      day: 'numeric' 
-                    })
-                    setNaturalDeferDate(natural)
-                  }
-                }}
-                placeholder="Defer until"
-                autoFocus
-              />
-            </div>
-          )}
-          {deferDatePreview && (
-            <div style={{ fontSize: '0.8em', color: '#4CAF50', marginTop: '2px' }}>
-              ✓ {deferDatePreview}
-            </div>
-          )}
-        </div>
-
-        <div className="editor-field">
           <label className="field-label">Due Date</label>
           <div className="date-input-container">
             <input
@@ -420,17 +225,7 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
             <button
               type="button"
               className="calendar-button"
-              onClick={() => {
-                setShowDueDatePicker(true)
-                // Focus the date input to trigger the native calendar
-                setTimeout(() => {
-                  const dateInput = document.querySelector('.date-picker-dropdown .task-date-input') as HTMLInputElement
-                  if (dateInput) {
-                    dateInput.focus()
-                    dateInput.showPicker?.()
-                  }
-                }, 10)
-              }}
+              onClick={() => setShowDueDatePicker(!showDueDatePicker)}
               title="Open calendar picker"
             >
               📅
@@ -467,6 +262,57 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
             </div>
           )}
         </div>
+
+        <div className="editor-field">
+          <label className="field-label">Defer Date</label>
+          <div className="date-input-container">
+            <input
+              className="task-natural-date-input"
+              type="text"
+              value={naturalDeferDate}
+              onChange={(e) => setNaturalDeferDate(e.target.value)}
+              placeholder="Type: tomorrow, next Friday, in 2 weeks..."
+            />
+            <button
+              type="button"
+              className="calendar-button"
+              onClick={() => setShowDeferDatePicker(!showDeferDatePicker)}
+              title="Open calendar picker"
+            >
+              📅
+            </button>
+          </div>
+          {showDeferDatePicker && (
+            <div className="date-picker-dropdown">
+              <input
+                className="task-date-input"
+                type="date"
+                value={deferDate}
+                onChange={(e) => {
+                  setDeferDate(e.target.value)
+                  // Update natural language input to match
+                  if (e.target.value) {
+                    const date = new Date(e.target.value)
+                    const natural = date.toLocaleDateString('en-US', { 
+                      weekday: 'long', 
+                      year: 'numeric', 
+                      month: 'long', 
+                      day: 'numeric' 
+                    })
+                    setNaturalDeferDate(natural)
+                  }
+                }}
+                placeholder="Defer until"
+                autoFocus
+              />
+            </div>
+          )}
+          {deferDatePreview && (
+            <div style={{ fontSize: '0.8em', color: '#4CAF50', marginTop: '2px' }}>
+              ✓ {deferDatePreview}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="editor-field context-field-wrapper">
@@ -487,20 +333,19 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
               setShowContextDropdown(true)
             }}
             onBlur={() => setTimeout(() => setShowContextDropdown(false), 200)}
-            onKeyDown={handleContextKeyDown}
+            onKeyDown={handleKeyDown}
             placeholder="Type or select context"
           />
           {showContextDropdown && filteredContexts.length > 0 && (
             <div className="context-dropdown">
-              {filteredContexts.slice(0, 8).map((ctx, index) => (
+              {filteredContexts.slice(0, 8).map(ctx => (
                 <div
                   key={ctx.id}
-                  className={`context-option ${index === highlightedIndex ? 'highlighted' : ''}`}
+                  className="context-option"
                   onClick={() => {
                     setContext(ctx.name)
                     setShowContextDropdown(false)
                   }}
-                  onMouseEnter={() => setHighlightedIndex(index)}
                 >
                   {ctx.name}
                 </div>
