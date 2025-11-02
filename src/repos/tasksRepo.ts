@@ -444,7 +444,7 @@ export async function retrySyncTasks(): Promise<{success: number; failed: number
       try {
         await syncTaskToOmniFocus(task)
         success++
-      } catch (error) {
+      } catch {
         failed++
         await updateTaskSyncState(task.id, 'error')
       }

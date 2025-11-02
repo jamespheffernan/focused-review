@@ -111,6 +111,9 @@ type State = {
   currentProjectQuestions: QuestionDTO[]
   drafts: Record<string, AnswerDraft> // key = projectID|questionID
   projectStartTime: number | null
+  calendarVisible: boolean
+  calendarWeekOf: string
+  reviewedProjectsThisSession: Set<string>
   loadQueue: () => Promise<void>
   syncFromOmniFocus: () => Promise<void>
   start: (ids: string[]) => Promise<void>
@@ -124,6 +127,7 @@ type State = {
   gotoQuestions: () => void
   gotoQueue: () => void
   loadProjectQuestions: (project: ProjectDTO) => Promise<void>
+  toggleCalendar: () => void
 }
 
 export const useApp = create<State>((set, get) => ({
@@ -133,6 +137,9 @@ export const useApp = create<State>((set, get) => ({
   currentProjectQuestions: FALLBACK_QUESTIONS,
   drafts: {},
   projectStartTime: null,
+  calendarVisible: false,
+  calendarWeekOf: getStartOfISOWeek(),
+  reviewedProjectsThisSession: new Set<string>(),
 
   loadQueue: async () => {
     console.log('📦 [Store] loadQueue called')
@@ -193,6 +200,10 @@ export const useApp = create<State>((set, get) => ({
       ? Math.round((Date.now() - get().projectStartTime!) / 1000)
       : 0
     
+    // Track reviewed project for calendar filtering
+    const reviewed = new Set(get().reviewedProjectsThisSession)
+    reviewed.add(project.id)
+    
     // Queue OmniFocus update in background (non-blocking)
     Projects.markReviewed(project.id, new Date().toISOString()).catch(error => {
       console.error('❌ Mark reviewed failed:', error)
@@ -218,10 +229,11 @@ export const useApp = create<State>((set, get) => ({
       set({ 
         route: { name:'focus', idx: next },
         currentProjectQuestions: questions,
-        projectStartTime: Date.now() // Reset timer for next project
+        projectStartTime: Date.now(), // Reset timer for next project
+        reviewedProjectsThisSession: reviewed
       })
     } else {
-      set({ route: { name:'summary' } })
+      set({ route: { name:'summary' }, reviewedProjectsThisSession: reviewed })
     }
   },
 
@@ -470,7 +482,11 @@ export const useApp = create<State>((set, get) => ({
     set({ route: { name:'questions' } })
   },
   
-  gotoQueue: () => set({ route: { name:'queue' } })
+  gotoQueue: () => set({ route: { name:'queue' } }),
+  
+  toggleCalendar: () => {
+    set({ calendarVisible: !get().calendarVisible })
+  }
 }))
 
 /**

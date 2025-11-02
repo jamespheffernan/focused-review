@@ -223,7 +223,7 @@ function PackageEditor({
     onSave(formData)
   }
 
-  const handleChange = (field: keyof QuestionPackageDTO, value: any) => {
+  const handleChange = (field: keyof QuestionPackageDTO, value: string | number | undefined) => {
     setFormData(prev => ({ ...prev, [field]: value }))
   }
 

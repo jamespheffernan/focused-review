@@ -511,6 +511,14 @@
   background: rgba(255, 255, 255, 0.15);
 }
 
+.context-option.highlighted {
+  background: rgba(33, 150, 243, 0.25);
+}
+
+.context-option.highlighted:hover {
+  background: rgba(33, 150, 243, 0.35);
+}
+
 .context-option-more {
   padding: 8px 14px;
   color: rgba(255, 255, 255, 0.5);
@@ -1858,6 +1866,9 @@
   cursor: pointer;
   transition: all 0.2s ease;
   min-width: 120px;
+  /* Persistent outline so buttons are clearly delineated on page load */
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
 
 .yes-no-button:hover {
@@ -1871,6 +1882,19 @@
   color: white;
   border-color: var(--accent);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Accessible keyboard focus outline for Yes/No buttons */
+.yes-no-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/* Fallback for browsers/environments where :focus-visible is not applied */
+.yes-no-button:focus {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
 
 /* Context Answers Display */

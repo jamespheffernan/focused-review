@@ -3,6 +3,7 @@ import { db } from '../db'
 import type { ProjectDTO, ProjectStatus, TaskDTO, SyncState } from '../types'
 import { omnifocusService } from '../services/omnifocus'
 import { syncManager } from '../services/syncManager'
+import type { OmniFocusBridgeProject } from '../services/omnifocus-bridge'
 
 // Guard to prevent concurrent syncs
 let isSyncing = false
@@ -29,9 +30,9 @@ export async function loadQueueFromCache(): Promise<ProjectDTO[]> {
       .notEqual('dropped')
       .toArray()
       .then(projects => projects.filter(p => 
-        (p as any).status !== 'done status' && 
-        (p as any).status !== 'completed' &&
-        (p as any).status !== 'done'
+        p.status !== 'done status' && 
+        p.status !== 'completed' &&
+        p.status !== 'done'
       ))
     
     console.log(`📦 Loaded ${allProjects.length} active projects from cache`)
@@ -308,7 +309,7 @@ export async function importOmniFocusProjects(projects: ProjectDTO[]) {
  * Import projects with their tasks from OmniFocus
  * NOTE: Does NOT clear database - caller should handle that
  */
-export async function importOmniFocusProjectsWithTasks(projects: any[]) {
+export async function importOmniFocusProjectsWithTasks(projects: OmniFocusBridgeProject[]) {
   try {
     console.log(`=== IMPORT STARTED: ${projects.length} projects ===`)
     
@@ -327,7 +328,7 @@ export async function importOmniFocusProjectsWithTasks(projects: any[]) {
     
     // Process each project and its tasks
     const projectDTOs: ProjectDTO[] = []
-    const allTasks: any[] = []
+    const allTasks: TaskDTO[] = []
     
     for (const project of projects) {
       // Convert to ProjectDTO
@@ -366,7 +367,9 @@ export async function importOmniFocusProjectsWithTasks(projects: any[]) {
             flagged: task.flagged || false,
             note: task.note || '',
             completed: task.completed || false,
-            completedDate: task.completedDate || null
+            completedDate: task.completedDate || null,
+            lastModified: new Date().toISOString(),
+            syncState: 'synced'
           })
         }
       } else {

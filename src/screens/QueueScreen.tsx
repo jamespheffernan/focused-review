@@ -279,7 +279,11 @@ export default function QueueScreen() {
                     checked={sel.has(p.id)} 
                     onChange={e => {
                       const s = new Set(sel); 
-                      e.target.checked ? s.add(p.id) : s.delete(p.id); 
+                      if (e.target.checked) {
+                        s.add(p.id)
+                      } else {
+                        s.delete(p.id)
+                      }
                       setSel(s)
                     }}
                   />

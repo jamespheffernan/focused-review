@@ -73,3 +73,13 @@ export interface NotionSyncQueueItem {
   status: 'pending' | 'retrying' | 'failed' | 'completed'
   errorMessage?: string        // Last error if failed
 }
+
+export interface TimelineCommitmentDTO {
+  id: string                    // UUID for commitment
+  projectId: string            // OmniFocus project ID
+  projectName: string          // Project name for display
+  weekOf: string               // ISO date for week (e.g., "2025-10-21")
+  committedDate: string        // ISO date when project committed to finish (e.g., "2025-11-15")
+  answerId: string             // ID of the answer that created this commitment
+  createdAt: string            // Timestamp when commitment was created
+}

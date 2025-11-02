@@ -1,5 +1,5 @@
 // repos/sessionsRepo.ts
-import { db } from '../db'; import type { ProjectDTO, SessionDTO, SummaryStats } from '../types'
+import { db } from '../db'; import type { SessionDTO, SummaryStats } from '../types'
 
 export async function startSession(_queue: ProjectDTO[]): Promise<SessionDTO> {
   const s: SessionDTO = { id: crypto.randomUUID(), startedAt: new Date().toISOString(), projectsReviewed: 0, projectsSkipped: 0, avgTimePerProjectSec: 0 }

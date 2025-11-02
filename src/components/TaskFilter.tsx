@@ -20,7 +20,7 @@ export default function TaskFilter({ filters, onFiltersChange, tasks }: TaskFilt
   // Get unique contexts from tasks
   const contexts = Array.from(new Set(tasks.map(t => t.context).filter(Boolean)))
 
-  const handleFilterChange = (key: keyof TaskFilters, value: any) => {
+  const handleFilterChange = (key: keyof TaskFilters, value: string | boolean | undefined) => {
     const newFilters = { ...filters }
     
     if (value === '' || value === undefined || value === 'all') {
