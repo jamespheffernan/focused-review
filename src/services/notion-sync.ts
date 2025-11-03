@@ -69,6 +69,7 @@ export async function findNotionPageByProjectId(projectId: string): Promise<stri
   try {
     // Query database filtering by OF-ID property
     // Type assertion needed due to incomplete type definitions in @notionhq/client
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const response = await (notionClient.databases as any).query({
       database_id: notionConfig.databaseId,
       filter: {
@@ -231,6 +232,7 @@ export async function checkDuplicateReview(
     
     for (const block of response.results) {
       if ('type' in block && block.type === 'paragraph') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const paragraph = block as any
         if (paragraph.paragraph?.rich_text) {
           for (const richText of paragraph.paragraph.rich_text) {

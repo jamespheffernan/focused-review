@@ -173,7 +173,7 @@ export const useApp = create<State>((set, get) => ({
 
   start: async (ids) => {
     const queue = (await Projects.fetchDueForReview()).filter(p => ids.includes(p.id))
-    const s = await Sessions.startSession(queue)
+    const s = await Sessions.startSession()
     set({ queue, sessionID: s.id, route: { name:'focus', idx: 0 }, projectStartTime: Date.now() })
     
     // Load context-aware questions for the first project

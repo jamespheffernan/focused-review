@@ -171,9 +171,10 @@ class OmniFocusService {
   } {
     // Use the bridge to get the most accurate status
     try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { omnifocusBridge } = require('./omnifocus-bridge')
       return omnifocusBridge.getIntegrationStatus()
-    } catch (error) {
+    } catch {
       // Fallback to local detection
       if (this.isElectron) {
         return {

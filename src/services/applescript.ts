@@ -60,8 +60,8 @@ class AppleScriptService {
     `
 
     try {
-      const result = await this.executeAppleScript(script)
-      return this.parseAppleScriptResult(result)
+      await this.executeAppleScript(script)
+      return this.parseAppleScriptResult()
     } catch (error) {
       console.error('AppleScript execution failed:', error)
       throw new Error('Failed to connect to OmniFocus. Please ensure OmniFocus is installed and running.')
@@ -153,7 +153,7 @@ class AppleScriptService {
   /**
    * Parse AppleScript result into project objects
    */
-  private parseAppleScriptResult(_result: string): AppleScriptProject[] {
+  private parseAppleScriptResult(): AppleScriptProject[] {
     // In a real implementation, this would parse the actual AppleScript result
     // For now, we'll return mock data that matches the expected format
     return [
