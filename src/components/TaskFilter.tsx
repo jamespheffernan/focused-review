@@ -26,7 +26,7 @@ export default function TaskFilter({ filters, onFiltersChange, tasks }: TaskFilt
     if (value === '' || value === undefined || value === 'all') {
       delete newFilters[key]
     } else {
-      newFilters[key] = value
+      (newFilters as any)[key] = value
     }
     
     onFiltersChange(newFilters)

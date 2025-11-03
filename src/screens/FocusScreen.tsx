@@ -63,7 +63,6 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
       setTasksLoading(true)
       const tasks = await fetchTasksForProject(project.id)
       console.log(`Loaded ${tasks.length} tasks for project ${project.name}:`, tasks)
-      setProjectTasks(tasks)
       
       // Log if no tasks found
       if (tasks.length === 0) {
@@ -88,7 +87,6 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
     setSelectedYesNo(null)
     setDatePreview(null)
     setInitialAnswer('')
-    setShowConfirmation(false) // Reset legacy confirmation overlay when project changes
     setOverlayVisible(false)
     setOverlayMessage('')
     setShowInboxSuccess(false) // Reset inbox success overlay when project changes

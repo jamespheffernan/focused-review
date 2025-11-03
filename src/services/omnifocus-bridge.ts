@@ -7,6 +7,7 @@ export interface OmniFocusTask {
   name: string
   status: 'available' | 'next' | 'blocked' | 'completed'
   dueDate?: string
+  deferDate?: string
   context?: string
   flagged: boolean
   note?: string

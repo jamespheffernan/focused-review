@@ -29,11 +29,6 @@ export async function loadQueueFromCache(): Promise<ProjectDTO[]> {
       .where('status')
       .notEqual('dropped')
       .toArray()
-      .then(projects => projects.filter(p => 
-        p.status !== 'done status' && 
-        p.status !== 'completed' &&
-        p.status !== 'done'
-      ))
     
     console.log(`📦 Loaded ${allProjects.length} active projects from cache`)
     
@@ -336,12 +331,12 @@ export async function importOmniFocusProjectsWithTasks(projects: OmniFocusBridge
         id: project.id,
         name: project.name,
         status: project.status || 'active', // Ensure status is always set
-        deferDate: project.deferDate || null,
-        dueDate: project.dueDate || null,
+        deferDate: project.deferDate || undefined,
+        dueDate: project.dueDate || undefined,
         reviewIntervalDays: project.reviewIntervalDays || 7,
         tags: project.tags || [],
-        lastReviewed: project.lastReviewed || null,
-        nextReviewDate: project.nextReviewDate || null,
+        lastReviewed: project.lastReviewed || undefined,
+        nextReviewDate: project.nextReviewDate || undefined,
         notes: project.notes || undefined  // Project notes (first line may contain Notion deep link)
       }
       projectDTOs.push(projectDTO)
@@ -361,13 +356,13 @@ export async function importOmniFocusProjectsWithTasks(projects: OmniFocusBridge
             projectId: project.id,
             name: task.name,
             status: task.status || 'available',
-            dueDate: task.dueDate || null,
-            deferDate: task.deferDate || null,
-            context: task.context || null,
+            dueDate: task.dueDate || undefined,
+            deferDate: task.deferDate || undefined,
+            context: task.context || undefined,
             flagged: task.flagged || false,
             note: task.note || '',
             completed: task.completed || false,
-            completedDate: task.completedDate || null,
+            completedDate: task.completedDate || undefined,
             lastModified: new Date().toISOString(),
             syncState: 'synced'
           })
