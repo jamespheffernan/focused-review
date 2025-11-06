@@ -228,9 +228,10 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
       // Only include fields that were actually changed
       const updates: Partial<TaskDTO> = {}
       
-      // Always update name if it changed
+      // Always update name if it changed (compare trimmed versions to avoid false positives)
       const newName = name.trim()
-      if (newName !== task?.name) {
+      const originalName = (task?.name || '').trim()
+      if (newName !== originalName) {
         updates.name = newName
       }
 
@@ -261,9 +262,9 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
         }
       }
 
-      // Only include note if it changed
+      // Only include note if it changed (compare trimmed versions to avoid false positives)
       const newNote = note.trim()
-      const originalNote = task?.note || ''
+      const originalNote = (task?.note || '').trim()
       const noteChanged = newNote !== originalNote
       if (noteChanged) {
         updates.note = newNote || undefined
