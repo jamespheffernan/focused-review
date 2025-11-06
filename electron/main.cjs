@@ -1390,6 +1390,13 @@ JSON.stringify({
       }
     }
     
+    // Skip main JXA script if there's nothing to update (due date was handled separately)
+    // Only execute if we have updateLogic or completionLogic to apply
+    if (!updateLogic.trim() && !completionLogic.trim()) {
+      console.log('[OmniFocus] No additional updates needed (due date was handled separately)')
+      return { success: true, taskId }
+    }
+    
     const jxaScript = `const of = Application('OmniFocus');
 const doc = of.defaultDocument;
 
@@ -1412,17 +1419,58 @@ if (!targetTask) {
 ${updateLogic}${completionLogic}
 
 // Return updated task data
-JSON.stringify({
+// Wrap property reads in try-catch to handle any read errors gracefully
+let resultData = {
   success: true,
-  taskId: targetTask.id(),
-  name: targetTask.name(),
-  note: targetTask.note() || '',
-  flagged: targetTask.flagged(),
-  dueDate: targetTask.dueDate() ? targetTask.dueDate().toISOString() : null,
-  context: targetTask.primaryTag() ? targetTask.primaryTag().name() : null,
-  completed: targetTask.completed(),
-  completionDate: targetTask.completionDate() ? targetTask.completionDate().toISOString() : null
-});`
+  taskId: targetTask.id()
+};
+
+try {
+  resultData.name = targetTask.name();
+} catch (e) {
+  resultData.name = null;
+}
+
+try {
+  resultData.note = targetTask.note() || '';
+} catch (e) {
+  resultData.note = '';
+}
+
+try {
+  resultData.flagged = targetTask.flagged();
+} catch (e) {
+  resultData.flagged = false;
+}
+
+try {
+  const dueDate = targetTask.dueDate();
+  resultData.dueDate = dueDate ? dueDate.toISOString() : null;
+} catch (e) {
+  resultData.dueDate = null;
+}
+
+try {
+  const primaryTag = targetTask.primaryTag();
+  resultData.context = primaryTag ? primaryTag.name() : null;
+} catch (e) {
+  resultData.context = null;
+}
+
+try {
+  resultData.completed = targetTask.completed();
+} catch (e) {
+  resultData.completed = false;
+}
+
+try {
+  const completionDate = targetTask.completionDate();
+  resultData.completionDate = completionDate ? completionDate.toISOString() : null;
+} catch (e) {
+  resultData.completionDate = null;
+}
+
+JSON.stringify(resultData);`
     
     // Write the JXA script to temporary file
     await fs.writeFile(tempJxaPath, jxaScript)
@@ -1488,8 +1536,16 @@ Error stderr: ${execError.stderr}
         require('fs').appendFileSync(require('path').join(require('os').homedir(), 'omnifocus-debug.log'), execErrorLog);
       } catch (e) {}
       
-      // Re-throw the error since we now handle context and due date operations directly
-      throw execError
+      // Include both stdout and stderr in error message for better debugging
+      const errorDetails = []
+      if (execError.stdout) errorDetails.push(`stdout: ${execError.stdout}`)
+      if (execError.stderr) errorDetails.push(`stderr: ${execError.stderr}`)
+      const fullError = errorDetails.length > 0 
+        ? `${execError.message}\n${errorDetails.join('\n')}`
+        : execError.message
+      
+      console.error('[OmniFocus] JXA execution error:', fullError)
+      return { success: false, error: fullError }
     }
     
     const execResult = `
