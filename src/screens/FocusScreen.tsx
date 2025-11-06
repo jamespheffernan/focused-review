@@ -462,11 +462,31 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
     })
     
     let followupInjected = false
+    const followupQuestionId = `${q.id}-followup`
+    
+    // Remove any previously injected followup if answer changed to something that shouldn't show followup
+    // This handles the case where user changes from "no" to "yes" for subsequent questions with if_no logic
+    if (isSubsequent && textValue === 'yes') {
+      setInjectedFollowups(prev => {
+        const updated = new Map(prev)
+        // Remove followup for this question if it exists
+        let removed = false
+        for (const [index, followup] of updated.entries()) {
+          if (followup.id === followupQuestionId) {
+            updated.delete(index)
+            removed = true
+            console.log(`[DEBUG] Removed injected followup ${followupQuestionId} because answer changed to 'yes'`)
+            break
+          }
+        }
+        return removed ? updated : prev
+      })
+    }
+    
     // Only inject followups for subsequent questions with 'if_no' logic
     // Initial questions don't have yes/no followups in this implementation
     if (isSubsequent && textValue === 'no') {
       console.log(`[DEBUG] Subsequent question answered 'no', checking for followup...`)
-      const followupQuestionId = `${q.id}-followup`
       // Check if followup already exists
       if (!allQuestions.some(fq => fq.id === followupQuestionId)) {
         // Determine followup prompt based on question type
@@ -501,7 +521,6 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
     } else if (isInitial && textValue === 'no') {
       console.log(`[DEBUG] Initial question answered 'no' - checking for initial followup...`)
       // Initial questions can also have followups, but with different logic
-      const followupQuestionId = `${q.id}-followup`
       if (!allQuestions.some(fq => fq.id === followupQuestionId)) {
         let followupPrompt = ''
         const followupType: 'text' | 'text-parsed' = 'text'

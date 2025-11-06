@@ -5,6 +5,30 @@ import { getCommitmentsForProject } from '../repos/timelineCommitmentsRepo'
 import { formatDisplayDate } from '../utils/calendar-utils'
 
 /**
+ * Check if a followup logic type depends on the current week's answer
+ * These followups should NOT be pre-loaded, but instead injected dynamically
+ * when the user answers the parent question in the current week
+ */
+function dependsOnCurrentWeekAnswer(logic: FollowupLogic): boolean {
+  switch (logic) {
+    case 'if_no':
+    case 'if_yes':
+    case 'if_score_lte':
+    case 'if_score_gte':
+    case 'if_text_equals':
+    case 'if_text_contains':
+      return true
+    case 'always':
+    case 'never':
+    case 'if_answered':
+    case 'if_empty':
+      return false
+    default:
+      return false
+  }
+}
+
+/**
  * Determine if a followup question should be shown based on the answer and logic
  */
 function shouldShowFollowup(answer: AnswerDraft | undefined, logic: FollowupLogic, conditionValue?: string | number): boolean {
@@ -68,16 +92,23 @@ async function expandPackage(pkg: QuestionPackageDTO, projectId: string, hasBeen
       })
       
       // Check if followup should be shown
+      // Skip pre-loading followups that depend on current week's answer (if_no, if_yes, etc.)
+      // These will be injected dynamically by FocusScreen.tsx when the user answers
       if (pkg.subsequentFollowup && pkg.subsequentFollowupLogic) {
-        const parentAnswer = await latest(projectId, questionId)
-        if (shouldShowFollowup(parentAnswer, pkg.subsequentFollowupLogic, pkg.subsequentFollowupConditionValue)) {
-          questions.push({
-            id: `${pkg.id}-subsequent-followup`,
-            prompt: pkg.subsequentFollowup,
-            type: pkg.subsequentFollowupType || 'text',
-            order: pkg.order + 0.5 // Place after main question
-          })
+        // Only pre-load followups that don't depend on current week's answer
+        if (!dependsOnCurrentWeekAnswer(pkg.subsequentFollowupLogic)) {
+          const parentAnswer = await latest(projectId, questionId)
+          if (shouldShowFollowup(parentAnswer, pkg.subsequentFollowupLogic, pkg.subsequentFollowupConditionValue)) {
+            questions.push({
+              id: `${pkg.id}-subsequent-followup`,
+              prompt: pkg.subsequentFollowup,
+              type: pkg.subsequentFollowupType || 'text',
+              order: pkg.order + 0.5 // Place after main question
+            })
+          }
         }
+        // For logic types that depend on current week's answer, rely on dynamic injection
+        // in FocusScreen.tsx which correctly checks the current answer
       }
     }
   } else {
@@ -91,16 +122,24 @@ async function expandPackage(pkg: QuestionPackageDTO, projectId: string, hasBeen
     })
     
     // Check if followup should be shown
+    // For initial questions, we can pre-load followups since there's no previous week
+    // However, for consistency and to avoid similar bugs, we'll also skip pre-loading
+    // followups that depend on current answer (if_no, if_yes, etc.)
     if (pkg.initialFollowup && pkg.initialFollowupLogic) {
-      const parentAnswer = await latest(projectId, questionId)
-      if (shouldShowFollowup(parentAnswer, pkg.initialFollowupLogic, pkg.initialFollowupConditionValue)) {
-        questions.push({
-          id: `${pkg.id}-initial-followup`,
-          prompt: pkg.initialFollowup,
-          type: pkg.initialFollowupType || 'text',
-          order: pkg.order + 0.5 // Place after main question
-        })
+      // Only pre-load followups that don't depend on current answer
+      if (!dependsOnCurrentWeekAnswer(pkg.initialFollowupLogic)) {
+        const parentAnswer = await latest(projectId, questionId)
+        if (shouldShowFollowup(parentAnswer, pkg.initialFollowupLogic, pkg.initialFollowupConditionValue)) {
+          questions.push({
+            id: `${pkg.id}-initial-followup`,
+            prompt: pkg.initialFollowup,
+            type: pkg.initialFollowupType || 'text',
+            order: pkg.order + 0.5 // Place after main question
+          })
+        }
       }
+      // For logic types that depend on current answer, rely on dynamic injection
+      // in FocusScreen.tsx which correctly checks the current answer
     }
   }
   
