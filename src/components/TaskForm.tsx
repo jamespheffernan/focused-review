@@ -225,32 +225,48 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
 
     if (isEditMode) {
       // Edit mode - return partial updates
-      const updates: Partial<TaskDTO> = {
-        name: name.trim(),
+      // Only include fields that were actually changed
+      const updates: Partial<TaskDTO> = {}
+      
+      // Always update name if it changed
+      const newName = name.trim()
+      if (newName !== task?.name) {
+        updates.name = newName
       }
 
-      if (dueDate) {
-        updates.dueDate = createDueDate(dueDate)
-      } else {
-        updates.dueDate = undefined
+      // Only include dueDate if it changed
+      const newDueDate = dueDate ? createDueDate(dueDate) : undefined
+      const originalDueDate = task?.dueDate ? task.dueDate.split('T')[0] : undefined
+      const dueDateChanged = (dueDate || '') !== (originalDueDate || '')
+      if (dueDateChanged) {
+        updates.dueDate = newDueDate
       }
 
-      if (deferDate) {
-        updates.deferDate = createDeferDate(deferDate)
-      } else {
-        updates.deferDate = undefined
+      // Only include deferDate if it changed
+      const newDeferDate = deferDate ? createDeferDate(deferDate) : undefined
+      const originalDeferDate = task?.deferDate ? task.deferDate.split('T')[0] : undefined
+      const deferDateChanged = (deferDate || '') !== (originalDeferDate || '')
+      if (deferDateChanged) {
+        updates.deferDate = newDeferDate
       }
 
-      if (finalContext) {
-        updates.context = finalContext
-      } else {
-        updates.context = undefined
+      // Only include context if it changed
+      const originalContext = task?.context || ''
+      const contextChanged = (context || '') !== originalContext
+      if (contextChanged) {
+        if (finalContext) {
+          updates.context = finalContext
+        } else {
+          updates.context = undefined
+        }
       }
 
-      if (note.trim()) {
-        updates.note = note.trim()
-      } else {
-        updates.note = undefined
+      // Only include note if it changed
+      const newNote = note.trim()
+      const originalNote = task?.note || ''
+      const noteChanged = newNote !== originalNote
+      if (noteChanged) {
+        updates.note = newNote || undefined
       }
 
       onSave(updates)

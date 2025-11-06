@@ -849,63 +849,133 @@ ipcMain.handle('omnifocus:set-task-due-date', async (event, taskId, dueDate) => 
     
     // First check if OmniFocus is running
     const checkScript = `tell application "System Events" to return (name of processes) contains "OmniFocus"`
-    const { stdout: isRunningOutput } = await execAsync(`osascript -e '${checkScript}'`)
+    const { stdout: isRunningOutput, stderr: checkStderr } = await execAsync(`osascript -e '${checkScript}'`)
+    
+    if (checkStderr) {
+      console.error('[OmniFocus] Error checking if OmniFocus is running:', checkStderr)
+    }
     
     if (!isRunningOutput.trim().toLowerCase().includes('true')) {
       return { success: false, error: 'OmniFocus is not running. Please start OmniFocus and try again.' }
     }
     
-    // OPTIMIZATION: Skip JXA entirely for due dates - OmniFocus 4 JXA can't handle them
-    // Go directly to AppleScript for better performance
-    console.log('[OmniFocus] Using direct AppleScript for due date (JXA not supported in OmniFocus 4)')
+    // Use JXA with proper OmniFocus 4 API methods (setDueDate/clearDueDate)
+    console.log('[OmniFocus] Using JXA with setDueDate/clearDueDate methods for OmniFocus 4')
+    
+    // Create temporary JXA script
+    const tempJxaPath = path.join(require('os').tmpdir(), 'set_task_due_date_jxa.js')
+    
+    // Format date for JXA Date constructor
+    let jxaScript
+    if (dueDate) {
+      const dateObj = new Date(dueDate)
+      // Use milliseconds since epoch - more reliable in JXA
+      const milliseconds = dateObj.getTime()
+      console.log('[OmniFocus] Setting due date:', dateObj.toISOString(), `(${milliseconds} ms)`)
+      
+      jxaScript = `const of = Application('OmniFocus');
+const doc = of.defaultDocument;
+
+// Find the task by ID
+const tasks = doc.flattenedTasks();
+let targetTask = null;
+
+for (let i = 0; i < tasks.length; i++) {
+  if (tasks[i].id() === '${taskId}') {
+    targetTask = tasks[i];
+    break;
+  }
+}
+
+if (!targetTask) {
+  throw new Error('Task not found with ID: ${taskId}');
+}
+
+// Set due date using direct property assignment
+// Note: setDueDate() method throws "Can't convert types" error in OF4 JXA
+// Use direct property assignment instead (similar to lastReviewDate)
+const dueDateObj = new Date(${milliseconds});
+targetTask.dueDate = dueDateObj;
+
+// Return success with updated due date
+JSON.stringify({
+  success: true,
+  taskId: targetTask.id(),
+  dueDate: targetTask.dueDate() ? targetTask.dueDate().toISOString() : null
+});`
+    } else {
+      console.log('[OmniFocus] Clearing due date')
+      
+      jxaScript = `const of = Application('OmniFocus');
+const doc = of.defaultDocument;
+
+// Find the task by ID
+const tasks = doc.flattenedTasks();
+let targetTask = null;
+
+for (let i = 0; i < tasks.length; i++) {
+  if (tasks[i].id() === '${taskId}') {
+    targetTask = tasks[i];
+    break;
+  }
+}
+
+if (!targetTask) {
+  throw new Error('Task not found with ID: ${taskId}');
+}
+
+// Clear due date using direct property assignment
+// Note: clearDueDate() method may throw "Can't convert types" error in OF4 JXA
+// Use direct property assignment instead
+targetTask.dueDate = null;
+
+// Return success
+JSON.stringify({
+  success: true,
+  taskId: targetTask.id(),
+  dueDate: null
+});`
+    }
+    
+    // Write the JXA script to temporary file
+    await fs.writeFile(tempJxaPath, jxaScript)
+    
+    // Execute the JXA script and capture both stdout and stderr
+    const { stdout: resultOutput, stderr } = await execAsync(`osascript -l JavaScript "${tempJxaPath}"`)
+    
+    // Clean up temporary file
+    try {
+      await fs.unlink(tempJxaPath)
+    } catch (cleanupError) {
+      console.warn('Failed to clean up temporary JXA file:', cleanupError.message)
+    }
+    
+    // Check for errors in stderr
+    if (stderr) {
+      console.error('[OmniFocus] JXA stderr when setting due date:', stderr)
+      return { success: false, error: `Failed to set due date: ${stderr}` }
+    }
+    
+    // Parse the JSON result
+    if (!resultOutput || resultOutput.trim() === '') {
+      return { success: false, error: 'No output from JXA script' }
+    }
     
     try {
-      if (dueDate) {
-        // Format date for AppleScript - preserve the exact time from ISO string
-        const dateObj = new Date(dueDate)
-        const dateStr = dateObj.toLocaleString('en-US', { 
-          month: 'long', 
-          day: 'numeric', 
-          year: 'numeric', 
-          hour: 'numeric', 
-          minute: '2-digit',
-          hour12: true 
-        })
-        
-        console.log('[OmniFocus] Setting due date:', dateStr)
-        
-        const appleScript = `tell application "OmniFocus"
-  tell default document
-    set theTask to first flattened task whose id is "${taskId}"
-    set due date of theTask to date "${dateStr}"
-  end tell
-end tell`
-        
-        await execAsync(`osascript -e '${appleScript.replace(/'/g, "'\\''")}'`)
-        console.log('Due date set via AppleScript')
-        return { success: true, taskId, dueDate }
-      } else {
-        console.log('[OmniFocus] Clearing due date')
-        
-        const appleScript = `tell application "OmniFocus"
-  tell default document
-    set theTask to first flattened task whose id is "${taskId}"
-    set due date of theTask to missing value
-  end tell
-end tell`
-        
-        await execAsync(`osascript -e '${appleScript.replace(/'/g, "'\\''")}'`)
-        console.log('Due date cleared via AppleScript')
-        return { success: true, taskId, dueDate: null }
-      }
-    } catch (asError) {
-      console.error('AppleScript due date operation failed:', asError)
-      return { success: false, error: `AppleScript failed: ${asError.message}` }
+      const result = JSON.parse(resultOutput.trim())
+      console.log('[OmniFocus] Due date operation successful:', result)
+      return { success: true, taskId: result.taskId, dueDate: result.dueDate }
+    } catch (parseError) {
+      console.error('[OmniFocus] Failed to parse JXA output:', parseError)
+      console.error('[OmniFocus] Raw output:', resultOutput)
+      return { success: false, error: `Failed to parse result: ${parseError.message}` }
     }
     
   } catch (error) {
     console.error('Error setting task due date:', error)
-    return { success: false, error: error.message }
+    // Include stderr if available
+    const errorMessage = error.stderr ? `${error.message}\nstderr: ${error.stderr}` : error.message
+    return { success: false, error: errorMessage }
   }
 })
 
@@ -1200,48 +1270,123 @@ end tell`
       }
     }
     
-    // OPTIMIZATION: Handle due date updates directly with AppleScript for better performance
-    if (updates.dueDate !== undefined && updates.context === undefined) {
-      console.log('[OmniFocus] Handling due date update directly with AppleScript (JXA not supported in OmniFocus 4)')
+    // Handle due date updates with JXA using proper OmniFocus 4 API methods
+    // Process due date separately even when context is present (OmniFocus 4 constraint)
+    if (updates.dueDate !== undefined) {
+      console.log('[OmniFocus] Handling due date update with JXA using setDueDate/clearDueDate methods')
       
       try {
+        // Create temporary JXA script
+        const tempJxaPath = path.join(require('os').tmpdir(), 'update_task_due_date_jxa.js')
+        
+        let jxaScript
         if (updates.dueDate) {
-          // Format date for AppleScript - preserve the exact time from ISO string
           const dateObj = new Date(updates.dueDate)
-          const dateStr = dateObj.toLocaleString('en-US', { 
-            month: 'long', 
-            day: 'numeric', 
-            year: 'numeric', 
-            hour: 'numeric', 
-            minute: '2-digit',
-            hour12: true 
-          })
+          // Use milliseconds since epoch - more reliable in JXA
+          const milliseconds = dateObj.getTime()
+          console.log('[OmniFocus] Setting due date:', dateObj.toISOString(), `(${milliseconds} ms)`)
           
-          console.log('[OmniFocus] Setting due date:', dateStr)
-          const appleScript = `tell application "OmniFocus"
-  tell default document
-    set theTask to first flattened task whose id is "${taskId}"
-    set due date of theTask to date "${dateStr}"
-  end tell
-end tell`
-          
-          await execAsync(`osascript -e '${appleScript.replace(/'/g, "'\\''")}'`)
-          console.log('[OmniFocus] Due date set via AppleScript')
+          jxaScript = `const of = Application('OmniFocus');
+const doc = of.defaultDocument;
+
+// Find the task by ID
+const tasks = doc.flattenedTasks();
+let targetTask = null;
+
+for (let i = 0; i < tasks.length; i++) {
+  if (tasks[i].id() === '${taskId}') {
+    targetTask = tasks[i];
+    break;
+  }
+}
+
+if (!targetTask) {
+  throw new Error('Task not found with ID: ${taskId}');
+}
+
+// Set due date using direct property assignment
+// Note: setDueDate() method throws "Can't convert types" error in OF4 JXA
+// Use direct property assignment instead (similar to lastReviewDate)
+const dueDateObj = new Date(${milliseconds});
+targetTask.dueDate = dueDateObj;
+
+// Return success with updated due date
+JSON.stringify({
+  success: true,
+  taskId: targetTask.id(),
+  dueDate: targetTask.dueDate() ? targetTask.dueDate().toISOString() : null
+});`
         } else {
           console.log('[OmniFocus] Clearing due date')
-          const appleScript = `tell application "OmniFocus"
-  tell default document
-    set theTask to first flattened task whose id is "${taskId}"
-    set due date of theTask to missing value
-  end tell
-end tell`
           
-          await execAsync(`osascript -e '${appleScript.replace(/'/g, "'\\''")}'`)
-          console.log('[OmniFocus] Due date cleared via AppleScript')
+          jxaScript = `const of = Application('OmniFocus');
+const doc = of.defaultDocument;
+
+// Find the task by ID
+const tasks = doc.flattenedTasks();
+let targetTask = null;
+
+for (let i = 0; i < tasks.length; i++) {
+  if (tasks[i].id() === '${taskId}') {
+    targetTask = tasks[i];
+    break;
+  }
+}
+
+if (!targetTask) {
+  throw new Error('Task not found with ID: ${taskId}');
+}
+
+// Clear due date using direct property assignment
+// Note: clearDueDate() method may throw "Can't convert types" error in OF4 JXA
+// Use direct property assignment instead
+targetTask.dueDate = null;
+
+// Return success
+JSON.stringify({
+  success: true,
+  taskId: targetTask.id(),
+  dueDate: null
+});`
+        }
+        
+        // Write the JXA script to temporary file
+        await fs.writeFile(tempJxaPath, jxaScript)
+        
+        // Execute the JXA script and capture both stdout and stderr
+        const { stdout: resultOutput, stderr } = await execAsync(`osascript -l JavaScript "${tempJxaPath}"`)
+        
+        // Clean up temporary file
+        try {
+          await fs.unlink(tempJxaPath)
+        } catch (cleanupError) {
+          console.warn('Failed to clean up temporary JXA file:', cleanupError.message)
+        }
+        
+        // Check for errors in stderr
+        if (stderr) {
+          console.error('[OmniFocus] JXA stderr when updating due date:', stderr)
+          return { success: false, error: `Due date update failed: ${stderr}` }
+        }
+        
+        // Parse the JSON result
+        if (!resultOutput || resultOutput.trim() === '') {
+          return { success: false, error: 'No output from JXA script when updating due date' }
+        }
+        
+        try {
+          const result = JSON.parse(resultOutput.trim())
+          console.log('[OmniFocus] Due date update successful:', result)
+        } catch (parseError) {
+          console.error('[OmniFocus] Failed to parse JXA output when updating due date:', parseError)
+          console.error('[OmniFocus] Raw output:', resultOutput)
+          return { success: false, error: `Failed to parse due date update result: ${parseError.message}` }
         }
       } catch (asError) {
-        console.error('[OmniFocus] AppleScript due date update failed:', asError)
-        return { success: false, error: `Due date update failed: ${asError.message}` }
+        console.error('[OmniFocus] JXA due date update failed:', asError)
+        // Include stderr if available
+        const errorMessage = asError.stderr ? `${asError.message}\nstderr: ${asError.stderr}` : asError.message
+        return { success: false, error: `Due date update failed: ${errorMessage}` }
       }
     }
     

@@ -1,0 +1,286 @@
+/**
+ * DESIGN TOKENS
+ * Single source of truth for all design decisions
+ * Every pixel matters. Every value has purpose.
+ */
+
+:root {
+  /* ============================================
+     SPACING SYSTEM
+     4px base unit - everything aligns to this grid
+     ============================================ */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* ============================================
+     TYPOGRAPHY
+     SF Pro / Inter font family with proper weights
+     Type scale: 12, 14, 16, 20, 24, 32, 48
+     ============================================ */
+
+  /* Font Families */
+  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', 'Segoe UI', system-ui, sans-serif;
+  --font-body: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'SF Mono', 'Consolas', 'Monaco', monospace;
+
+  /* Font Weights */
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* Font Sizes */
+  --font-size-micro: 12px;
+  --font-size-caption: 14px;
+  --font-size-body: 16px;
+  --font-size-subheading: 20px;
+  --font-size-heading: 24px;
+  --font-size-title: 32px;
+  --font-size-display: 48px;
+
+  /* Line Heights */
+  --line-height-tight: 1.2;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.6;
+
+  /* ============================================
+     BORDER RADIUS
+     8px for components, 12px for large containers
+     ============================================ */
+  --radius-small: 8px;
+  --radius-medium: 12px;
+  --radius-large: 16px;
+  --radius-full: 9999px;
+
+  /* ============================================
+     TRANSITIONS
+     Consistent timing and easing
+     ============================================ */
+  --transition-fast: 0.15s cubic-bezier(0.4, 0.0, 0.2, 1);
+  --transition-base: 0.2s cubic-bezier(0.4, 0.0, 0.2, 1);
+  --transition-slow: 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+
+  /* Transition properties (never use "all") */
+  --transition-default: transform var(--transition-base), opacity var(--transition-base);
+  --transition-colors: background-color var(--transition-base), border-color var(--transition-base), color var(--transition-base);
+
+  /* ============================================
+     Z-INDEX SYSTEM
+     4 levels: base, dropdown, overlay, modal
+     ============================================ */
+  --z-base: 1;
+  --z-dropdown: 10;
+  --z-overlay: 100;
+  --z-modal: 1000;
+
+  /* ============================================
+     GLASSMORPHISM
+     3 opacity levels, 2 blur strengths
+     ============================================ */
+
+  /* Surface Opacity */
+  --glass-opacity-subtle: 0.08;
+  --glass-opacity-medium: 0.15;
+  --glass-opacity-strong: 0.25;
+
+  /* Border Opacity */
+  --glass-border-subtle: 0.15;
+  --glass-border-medium: 0.3;
+
+  /* Blur Strength */
+  --glass-blur-standard: blur(12px);
+  --glass-blur-overlay: blur(24px);
+
+  /* ============================================
+     ELEVATION (SHADOWS)
+     3 levels: subtle, medium, strong
+     ============================================ */
+  --shadow-subtle: 0 2px 8px rgba(0, 0, 0, 0.1);
+  --shadow-medium: 0 4px 16px rgba(0, 0, 0, 0.15);
+  --shadow-strong: 0 8px 32px rgba(0, 0, 0, 0.25);
+
+  /* Focus shadow for accessibility */
+  --shadow-focus: 0 0 0 2px var(--color-action);
+
+  /* ============================================
+     ICON SIZES
+     3 sizes: small, medium, large
+     ============================================ */
+  --icon-small: 16px;
+  --icon-medium: 20px;
+  --icon-large: 24px;
+
+  /* ============================================
+     TOUCH TARGETS
+     Minimum sizes for accessibility
+     ============================================ */
+  --touch-target-min: 44px;
+  --button-height-small: 32px;
+  --button-height-medium: 44px;
+  --button-height-large: 56px;
+
+  /* ============================================
+     SEMANTIC COLORS - LIGHT THEME
+     Will be overridden by dark theme
+     ============================================ */
+
+  /* Action/Primary Colors */
+  --color-action: #007AFF;
+  --color-action-hover: #0051D5;
+  --color-action-pressed: #003D99;
+  --color-action-disabled: #B3D7FF;
+
+  /* Danger/Destructive */
+  --color-danger: #FF3B30;
+  --color-danger-hover: #D62D22;
+  --color-danger-pressed: #B31F16;
+
+  /* Warning */
+  --color-warning: #FF9500;
+  --color-warning-hover: #CC7700;
+
+  /* Success */
+  --color-success: #34C759;
+  --color-success-hover: #2A9F47;
+
+  /* Neutral/Secondary */
+  --color-neutral: #8E8E93;
+  --color-neutral-hover: #6C6C70;
+
+  /* Text Colors */
+  --color-text-primary: rgba(0, 0, 0, 0.9);
+  --color-text-secondary: rgba(0, 0, 0, 0.6);
+  --color-text-tertiary: rgba(0, 0, 0, 0.4);
+  --color-text-inverse: rgba(255, 255, 255, 0.95);
+
+  /* Surface Colors */
+  --color-surface-base: #FFFFFF;
+  --color-surface-elevated: #F9F9F9;
+  --color-surface-overlay: rgba(255, 255, 255, 0.95);
+
+  /* Border Colors */
+  --color-border-subtle: rgba(0, 0, 0, 0.08);
+  --color-border-medium: rgba(0, 0, 0, 0.15);
+  --color-border-strong: rgba(0, 0, 0, 0.3);
+
+  /* Background Gradient (for themed backgrounds) */
+  --background-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+/* ============================================
+   DARK THEME
+   Overrides light theme colors
+   ============================================ */
+[data-theme="dark"] {
+  /* Action/Primary Colors - slightly brighter for dark bg */
+  --color-action: #0A84FF;
+  --color-action-hover: #409CFF;
+  --color-action-pressed: #0051D5;
+  --color-action-disabled: #003D99;
+
+  /* Danger */
+  --color-danger: #FF453A;
+  --color-danger-hover: #FF6961;
+  --color-danger-pressed: #D62D22;
+
+  /* Warning */
+  --color-warning: #FF9F0A;
+  --color-warning-hover: #FFB340;
+
+  /* Success */
+  --color-success: #32D74B;
+  --color-success-hover: #64DE75;
+
+  /* Neutral */
+  --color-neutral: #98989D;
+  --color-neutral-hover: #AEAEB2;
+
+  /* Text Colors */
+  --color-text-primary: rgba(255, 255, 255, 0.95);
+  --color-text-secondary: rgba(255, 255, 255, 0.6);
+  --color-text-tertiary: rgba(255, 255, 255, 0.4);
+  --color-text-inverse: rgba(0, 0, 0, 0.9);
+
+  /* Surface Colors */
+  --color-surface-base: #000000;
+  --color-surface-elevated: #1C1C1E;
+  --color-surface-overlay: rgba(28, 28, 30, 0.95);
+
+  /* Border Colors */
+  --color-border-subtle: rgba(255, 255, 255, 0.08);
+  --color-border-medium: rgba(255, 255, 255, 0.15);
+  --color-border-strong: rgba(255, 255, 255, 0.3);
+
+  /* Background Gradient */
+  --background-gradient: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+}
+
+/* ============================================
+   AUTO THEME
+   Follows system preference
+   ============================================ */
+@media (prefers-color-scheme: dark) {
+  [data-theme="auto"] {
+    /* Action/Primary Colors */
+    --color-action: #0A84FF;
+    --color-action-hover: #409CFF;
+    --color-action-pressed: #0051D5;
+    --color-action-disabled: #003D99;
+
+    /* Danger */
+    --color-danger: #FF453A;
+    --color-danger-hover: #FF6961;
+    --color-danger-pressed: #D62D22;
+
+    /* Warning */
+    --color-warning: #FF9F0A;
+    --color-warning-hover: #FFB340;
+
+    /* Success */
+    --color-success: #32D74B;
+    --color-success-hover: #64DE75;
+
+    /* Neutral */
+    --color-neutral: #98989D;
+    --color-neutral-hover: #AEAEB2;
+
+    /* Text Colors */
+    --color-text-primary: rgba(255, 255, 255, 0.95);
+    --color-text-secondary: rgba(255, 255, 255, 0.6);
+    --color-text-tertiary: rgba(255, 255, 255, 0.4);
+    --color-text-inverse: rgba(0, 0, 0, 0.9);
+
+    /* Surface Colors */
+    --color-surface-base: #000000;
+    --color-surface-elevated: #1C1C1E;
+    --color-surface-overlay: rgba(28, 28, 30, 0.95);
+
+    /* Border Colors */
+    --color-border-subtle: rgba(255, 255, 255, 0.08);
+    --color-border-medium: rgba(255, 255, 255, 0.15);
+    --color-border-strong: rgba(255, 255, 255, 0.3);
+
+    /* Background Gradient */
+    --background-gradient: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  }
+}
+
+/**
+ * USAGE PHILOSOPHY
+ *
+ * 1. NEVER use hardcoded values in components
+ * 2. ALWAYS reference tokens: var(--space-4), var(--color-action)
+ * 3. If you need a value not in tokens, add it to tokens first
+ * 4. Spacing MUST use 4px base: --space-1 through --space-16
+ * 5. Colors MUST be semantic: --color-action, not --color-blue
+ * 6. Transitions MUST use predefined timing/easing
+ * 7. Every pixel on 4px grid, every value intentional
+ *
+ * This is not a suggestion. This is how we build products that matter.
+ */

@@ -1,7 +1,18 @@
-@font-face {
-  font-family: 'Electrolize';
-  src: url('./assets/Electrolize-Regular.ttf') format('truetype');
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
+/**
+ * TYPOGRAPHY
+ * Using system fonts for optimal performance and native feel
+ * SF Pro on macOS, Inter/Segoe UI on Windows/Linux
+ * All font tokens defined in design-tokens.css
+ */
+
+/* Optional: Load Inter as fallback for non-Apple systems */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+/**
+ * Previous font: Electrolize (single weight, futuristic but limiting)
+ * New approach: System font stack for:
+ * - Better performance (no font loading)
+ * - Native OS feel
+ * - Full weight range (400, 500, 600, 700)
+ * - Better readability at all sizes
+ */

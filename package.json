@@ -21,6 +21,7 @@
     "@notionhq/client": "^2.2.15",
     "better-sqlite3": "^12.4.1",
     "chrono-node": "^2.9.0",
+    "claude": "^0.1.1",
     "dexie": "^4.2.0",
     "html2canvas": "^1.4.1",
     "idb-keyval": "^6.2.2",
