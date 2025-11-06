@@ -41,10 +41,16 @@ export default function CalendarOverlay({
       const allCommitments = await getCommitmentsForWeek(selectedWeek)
       
       // Filter to only reviewed projects if this is the current week during active review
+      // AND we have session projects (meaning we're in an active review session)
+      // Otherwise, show all commitments for the week (including from previous sessions)
       let filtered = allCommitments
-      if (isCurrentWeek && currentSessionProjects) {
+      if (isCurrentWeek && currentSessionProjects && currentSessionProjects.size > 0) {
+        // During active review session: show only commitments from projects reviewed this session
         filtered = allCommitments.filter(c => currentSessionProjects.has(c.projectId))
-        console.log(`📅 Calendar filtered to ${filtered.length}/${allCommitments.length} commitments (reviewed projects only)`)
+        console.log(`📅 Calendar filtered to ${filtered.length}/${allCommitments.length} commitments (reviewed projects this session only)`)
+      } else {
+        // Not in active session or viewing past week: show all commitments for the week
+        console.log(`📅 Calendar showing all ${allCommitments.length} commitments for week ${selectedWeek}`)
       }
       
       setCommitments(filtered)

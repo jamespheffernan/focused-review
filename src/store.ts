@@ -196,12 +196,17 @@ export const useApp = create<State>((set, get) => ({
     
     // Find first unreviewed project (no answers for this week)
     let firstUnreviewedIdx = 0
+    const reviewedThisWeek = new Set<string>()
     for (let i = 0; i < queue.length; i++) {
       const project = queue[i]
       const answers = await Answers.getProjectAnswersForWeek(project.id, weekOf)
       if (answers.length === 0) {
-        firstUnreviewedIdx = i
-        break
+        if (firstUnreviewedIdx === 0) {
+          firstUnreviewedIdx = i
+        }
+      } else {
+        // Project has been reviewed this week
+        reviewedThisWeek.add(project.id)
       }
     }
     
@@ -213,7 +218,8 @@ export const useApp = create<State>((set, get) => ({
       sessionID: s.id, 
       weeklyReview,
       route: { name:'focus', idx: firstUnreviewedIdx }, 
-      projectStartTime: Date.now() 
+      projectStartTime: Date.now(),
+      reviewedProjectsThisSession: reviewedThisWeek
     })
     
     // Load context-aware questions for the first project
