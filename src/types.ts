@@ -4,6 +4,7 @@ export type FollowupLogic = 'always'|'never'|'if_yes'|'if_no'|'if_answered'|'if_
 export type AnswerStatus = 'CarriedForward'|'Updated'|'New'
 export type SyncState = 'synced'|'queued'|'retrying'|'error'
 export type TaskStatus = 'available'|'next'|'blocked'|'completed'
+export type WeeklyReviewState = 'not_started'|'in_progress'|'completed'|'cleared'
 
 export interface ProjectDTO {
   id: string; name: string; status: ProjectStatus
@@ -58,6 +59,17 @@ export interface AnswerDraft {
 export interface SessionDTO {
   id: string; startedAt: string; endedAt?: string
   projectsReviewed: number; projectsSkipped: number; avgTimePerProjectSec: number
+  weeklyReviewId?: string
+}
+
+export interface WeeklyReviewDTO {
+  id: string
+  weekOf: string                    // ISO date for week (e.g., "2025-10-21")
+  state: WeeklyReviewState
+  startedAt?: string                // When review was started
+  completedAt?: string               // When review was completed
+  clearedAt?: string                 // When review was cleared
+  createdAt: string                 // When record was created
 }
 
 export interface SummaryStats { reviewed: number; skipped: number; totalTimeSec: number; avgTimePerProjectSec: number }

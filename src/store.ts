@@ -1,11 +1,14 @@
 import { create } from 'zustand'
-import type { ProjectDTO, QuestionDTO, AnswerDraft } from './types'
+import type { ProjectDTO, QuestionDTO, AnswerDraft, WeeklyReviewDTO } from './types'
 import * as Projects from './repos/projectsRepo'
 import * as Answers from './repos/answersRepo'
 import * as Sessions from './repos/sessionsRepo'
+import * as WeeklyReviews from './repos/weeklyReviewsRepo'
 import { getQuestionsForProject } from './services/question-loader'
 import { getStartOfISOWeek } from './services/review-formatter'
 import * as NotionSyncQueue from './repos/notionSyncQueueRepo'
+import { syncAnswerToTimelineCache, shouldSyncToTimelineCache } from './services/timeline-cache'
+import { db } from './db'
 
 // Fallback questions if markdown file can't be loaded
 const FALLBACK_QUESTIONS: QuestionDTO[] = [
@@ -107,6 +110,7 @@ type State = {
   route: Route
   queue: ProjectDTO[]
   sessionID?: string
+  weeklyReview?: WeeklyReviewDTO
   questions: QuestionDTO[]
   currentProjectQuestions: QuestionDTO[]
   drafts: Record<string, AnswerDraft> // key = projectID|questionID
@@ -172,13 +176,49 @@ export const useApp = create<State>((set, get) => ({
   },
 
   start: async (ids) => {
-    const queue = (await Projects.fetchDueForReview()).filter(p => ids.includes(p.id))
-    const s = await Sessions.startSession()
-    set({ queue, sessionID: s.id, route: { name:'focus', idx: 0 }, projectStartTime: Date.now() })
+    const weekOf = getStartOfISOWeek()
+    
+    // Get or create weekly review for this week
+    const weeklyReview = await WeeklyReviews.getOrCreateWeeklyReviewForWeek(weekOf)
+    
+    // Update state to in_progress if not already
+    if (weeklyReview.state !== 'in_progress') {
+      await WeeklyReviews.updateWeeklyReviewState(weeklyReview.id, 'in_progress')
+      weeklyReview.state = 'in_progress'
+      if (!weeklyReview.startedAt) {
+        weeklyReview.startedAt = new Date().toISOString()
+      }
+    }
+    
+    // Get all due projects (including already reviewed ones)
+    const allDueProjects = await Projects.fetchDueForReview()
+    const queue = allDueProjects.filter(p => ids.includes(p.id))
+    
+    // Find first unreviewed project (no answers for this week)
+    let firstUnreviewedIdx = 0
+    for (let i = 0; i < queue.length; i++) {
+      const project = queue[i]
+      const answers = await Answers.getProjectAnswersForWeek(project.id, weekOf)
+      if (answers.length === 0) {
+        firstUnreviewedIdx = i
+        break
+      }
+    }
+    
+    // Start session linked to weekly review
+    const s = await Sessions.startSession(weeklyReview.id)
+    
+    set({ 
+      queue, 
+      sessionID: s.id, 
+      weeklyReview,
+      route: { name:'focus', idx: firstUnreviewedIdx }, 
+      projectStartTime: Date.now() 
+    })
     
     // Load context-aware questions for the first project
     if (queue.length > 0) {
-      const questions = await generateContextAwareQuestions(queue[0])
+      const questions = await generateContextAwareQuestions(queue[firstUnreviewedIdx])
       set({ currentProjectQuestions: questions })
     }
   },
@@ -192,6 +232,22 @@ export const useApp = create<State>((set, get) => ({
     await Answers.upsert(d)
     const key = `${d.projectID}|${d.questionID}`
     set({ drafts: { ...get().drafts, [key]: d } })
+    
+    // Sync to timeline cache if this is a timeline question
+    if (shouldSyncToTimelineCache(d.questionID)) {
+      // Try to find project in queue first, otherwise fetch from database
+      let project = get().queue.find(p => p.id === d.projectID)
+      if (!project) {
+        project = await db.projects.get(d.projectID) || undefined
+      }
+      if (project) {
+        syncAnswerToTimelineCache(d, project).catch(error => {
+          console.error('❌ Failed to sync answer to timeline cache:', error)
+        })
+      } else {
+        console.warn(`⚠️ Could not find project ${d.projectID} for timeline sync`)
+      }
+    }
   },
 
   markReviewedAndNext: async (project, idx) => {
@@ -233,7 +289,14 @@ export const useApp = create<State>((set, get) => ({
         reviewedProjectsThisSession: reviewed
       })
     } else {
-      set({ route: { name:'summary' }, reviewedProjectsThisSession: reviewed })
+      // All projects reviewed - mark weekly review as completed
+      const weeklyReview = get().weeklyReview
+      if (weeklyReview) {
+        await WeeklyReviews.updateWeeklyReviewState(weeklyReview.id, 'completed')
+        weeklyReview.state = 'completed'
+        weeklyReview.completedAt = new Date().toISOString()
+      }
+      set({ route: { name:'summary' }, reviewedProjectsThisSession: reviewed, weeklyReview })
     }
   },
 

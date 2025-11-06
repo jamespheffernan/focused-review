@@ -75,3 +75,17 @@ export async function getCommitmentsInDateRange(
     .toArray()
 }
 
+/**
+ * Delete all commitments for a specific week
+ */
+export async function deleteCommitmentsForWeek(weekOf: string): Promise<number> {
+  const commitments = await getCommitmentsForWeek(weekOf)
+  const count = commitments.length
+  
+  for (const commitment of commitments) {
+    await deleteCommitment(commitment.id)
+  }
+  
+  return count
+}
+

@@ -115,3 +115,20 @@ export const getInitialAnswer = async (projectID: string, questionID: string): P
     .sortBy('weekOf')
     .then(answers => answers[0]) // First answer (oldest)
 }
+
+/**
+ * Delete all answers for a specific week
+ */
+export const deleteAnswersForWeek = async (weekOf: string): Promise<number> => {
+  const answers = await db.answers
+    .where('weekOf')
+    .equals(weekOf)
+    .toArray()
+  
+  const count = answers.length
+  for (const answer of answers) {
+    await db.answers.delete(answer.id)
+  }
+  
+  return count
+}

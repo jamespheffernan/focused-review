@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie'
-import type { ProjectDTO, AnswerDraft, SessionDTO, TaskDTO, NotionSyncQueueItem, QuestionDTO, QuestionPackageDTO, TimelineCommitmentDTO } from './types'
+import type { ProjectDTO, AnswerDraft, SessionDTO, TaskDTO, NotionSyncQueueItem, QuestionDTO, QuestionPackageDTO, TimelineCommitmentDTO, WeeklyReviewDTO } from './types'
 
 export class ReviewDB extends Dexie {
   projects!: Table<ProjectDTO, string>
@@ -10,6 +10,7 @@ export class ReviewDB extends Dexie {
   questions!: Table<QuestionDTO, string>
   questionPackages!: Table<QuestionPackageDTO, string>
   timelineCommitments!: Table<TimelineCommitmentDTO, string>
+  weeklyReviews!: Table<WeeklyReviewDTO, string>
   constructor() {
     super('reviewhud')
     this.version(1).stores({
@@ -92,6 +93,18 @@ export class ReviewDB extends Dexie {
       questions: 'id, category, [category+order]',
       questionPackages: 'id, order',
       timelineCommitments: 'id, projectId, weekOf, committedDate, [projectId+weekOf]'
+    })
+    // Version 11: Add weeklyReviews table and link sessions to weeklyReviews
+    this.version(11).stores({
+      projects: 'id, lastReviewed, status, nextReviewDate',
+      answers: 'id, projectID, questionID, weekOf, parentAnswerId, parsedDate, [projectID+questionID], [projectID+weekOf]',
+      sessions: 'id, startedAt, weeklyReviewId',
+      tasks: 'id, projectId, status, completed, [projectId+status], [projectId+completed], dueDate, flagged, lastModified, syncState',
+      notionSyncQueue: 'id, projectId, weekOf, status, nextRetry, [projectId+weekOf]',
+      questions: 'id, category, [category+order]',
+      questionPackages: 'id, order',
+      timelineCommitments: 'id, projectId, weekOf, committedDate, [projectId+weekOf]',
+      weeklyReviews: 'id, weekOf, state, [weekOf+state]'
     })
   }
 }

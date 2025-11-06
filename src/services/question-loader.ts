@@ -1,6 +1,8 @@
 import type { QuestionDTO, QuestionPackageDTO, FollowupLogic, AnswerDraft } from '../types'
 import { getAllPackages } from '../repos/questionPackagesRepo'
 import { latest } from '../repos/answersRepo'
+import { getCommitmentsForProject } from '../repos/timelineCommitmentsRepo'
+import { formatDisplayDate } from '../utils/calendar-utils'
 
 /**
  * Determine if a followup question should be shown based on the answer and logic
@@ -44,9 +46,23 @@ async function expandPackage(pkg: QuestionPackageDTO, projectId: string, hasBeen
     // Subsequent review - use subsequent question if it exists
     if (pkg.subsequentQuestion) {
       const questionId = `${pkg.id}-subsequent`
+      let prompt = pkg.subsequentQuestion
+      
+      // Enhance timeline subsequent question with most recent commitment
+      if (pkg.id === 'pkg-timeline' && questionId === 'pkg-timeline-subsequent') {
+        const commitments = await getCommitmentsForProject(projectId)
+        if (commitments.length > 0) {
+          // Sort by weekOf descending to get most recent
+          commitments.sort((a, b) => b.weekOf.localeCompare(a.weekOf))
+          const mostRecent = commitments[0]
+          const formattedDate = formatDisplayDate(mostRecent.committedDate)
+          prompt = `Last committed: ${formattedDate}. ${pkg.subsequentQuestion}`
+        }
+      }
+      
       questions.push({
         id: questionId,
-        prompt: pkg.subsequentQuestion,
+        prompt,
         type: pkg.subsequentQuestionType || 'text',
         order: pkg.order
       })

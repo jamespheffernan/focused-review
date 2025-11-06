@@ -7,13 +7,46 @@ import { RefreshCw, Info, AlertTriangle, ClipboardList, CheckCircle2, Ban, Setti
 import ThemeSelector from '../components/ThemeSelector'
 import { themeManager } from '../services/themeManager'
 import { DataSourceBanner } from '../components/DataSourceBanner'
+import * as WeeklyReviews from '../repos/weeklyReviewsRepo'
+import * as Answers from '../repos/answersRepo'
+import { getStartOfISOWeek } from '../services/review-formatter'
 
 export default function QueueScreen() {
   const { queue, start, syncFromOmniFocus, gotoQuestions } = useApp()
   const [sel, setSel] = useState<Set<string>>(new Set())
+  const [weeklyReview, setWeeklyReview] = useState<{ state: string } | null>(null)
+  const [reviewedProjects, setReviewedProjects] = useState<Set<string>>(new Set())
   
   // Track data source for banner
   const dataSourceInfo = syncManager.getDataSource()
+  
+  // Load weekly review state and reviewed projects
+  useEffect(() => {
+    const loadWeeklyReviewState = async () => {
+      const weekOf = getStartOfISOWeek()
+      const review = await WeeklyReviews.getWeeklyReviewForWeek(weekOf)
+      if (review) {
+        setWeeklyReview({ state: review.state })
+        
+        // Load which projects have been reviewed this week
+        const reviewed = new Set<string>()
+        for (const project of queue) {
+          const answers = await Answers.getProjectAnswersForWeek(project.id, weekOf)
+          if (answers.length > 0) {
+            reviewed.add(project.id)
+          }
+        }
+        setReviewedProjects(reviewed)
+      } else {
+        setWeeklyReview(null)
+        setReviewedProjects(new Set())
+      }
+    }
+    
+    if (queue.length > 0) {
+      loadWeeklyReviewState()
+    }
+  }, [queue])
   
   // Auto-select all projects when queue changes
   useEffect(() => {
@@ -124,6 +157,26 @@ export default function QueueScreen() {
             }}>
               Select projects to review
             </h2>
+            {weeklyReview && (
+              <div style={{ 
+                fontSize: '0.85em', 
+                opacity: 0.7,
+                marginTop: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}>
+                {weeklyReview.state === 'in_progress' && (
+                  <span style={{ color: '#FFC107' }}>● Review in progress</span>
+                )}
+                {weeklyReview.state === 'completed' && (
+                  <span style={{ color: '#4CAF50' }}>✓ Review completed</span>
+                )}
+                {reviewedProjects.size > 0 && (
+                  <span>({reviewedProjects.size} reviewed this week)</span>
+                )}
+              </div>
+            )}
           </div>
           
           <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
@@ -288,9 +341,14 @@ export default function QueueScreen() {
                     }}
                   />
                   <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <span>{p.name}</span>
-                      {stats.total > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span>{p.name}</span>
+                    {reviewedProjects.has(p.id) && (
+                      <span title="Reviewed this week">
+                        <CheckCircle2 size={16} style={{ color: '#4CAF50', opacity: 0.8 }} />
+                      </span>
+                    )}
+                    {stats.total > 0 && (
                         <div style={{ 
                           display: 'flex', 
                           gap: '8px', 
@@ -346,7 +404,7 @@ export default function QueueScreen() {
         onClick={() => start(ids.length ? ids : queue.map(p=>p.id))}
         style={{ fontSize: '1.2em', padding: '20px 40px' }}
       >
-        Start Review ({ids.length || queue.length} projects)
+        {weeklyReview?.state === 'in_progress' ? 'Resume Weekly Review' : 'Start Weekly Review'} ({ids.length || queue.length} projects)
       </button>
     </div>
     </>

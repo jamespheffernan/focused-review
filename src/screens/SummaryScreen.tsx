@@ -5,9 +5,12 @@ import { getCommitmentsForWeek } from '../repos/timelineCommitmentsRepo'
 import { exportCalendarAsPNG } from '../utils/calendar-export'
 import CalendarGanttChart from '../components/CalendarGanttChart'
 import type { TimelineCommitmentDTO } from '../types'
-import { Calendar, Download } from 'lucide-react'
+import { Calendar, Download, Trash2 } from 'lucide-react'
+import { clearWeekReview } from '../services/week-clearer'
+import { useApp } from '../store'
 
 export default function SummaryScreen() {
+  const { gotoQueue } = useApp()
   const [sessionStats, setSessionStats] = useState({
     projectsReviewed: 0,
     projectsSkipped: 0,
@@ -17,6 +20,7 @@ export default function SummaryScreen() {
   const [showCalendar, setShowCalendar] = useState(false)
   const [commitments, setCommitments] = useState<TimelineCommitmentDTO[]>([])
   const [exporting, setExporting] = useState(false)
+  const [clearing, setClearing] = useState(false)
   
   useEffect(() => {
     loadSessionStats()
@@ -71,6 +75,29 @@ export default function SummaryScreen() {
     const minutes = Math.floor(seconds / 60)
     const remainingSeconds = seconds % 60
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
+  }
+
+  const handleClearWeek = async () => {
+    if (!confirm('Are you sure you want to clear this week\'s review? This will delete all answers, commitments, and sessions for this week. This action cannot be undone.')) {
+      return
+    }
+
+    setClearing(true)
+    try {
+      const weekOf = getStartOfISOWeek()
+      const result = await clearWeekReview(weekOf)
+      console.log(`✅ Week cleared: ${result.answersDeleted} answers, ${result.commitmentsDeleted} commitments, ${result.sessionsDeleted} sessions`)
+      alert(`Week review cleared successfully.\n\nDeleted:\n- ${result.answersDeleted} answers\n- ${result.commitmentsDeleted} commitments\n- ${result.sessionsDeleted} sessions`)
+      
+      // Reload data and go back to queue
+      await loadCommitments()
+      gotoQueue()
+    } catch (error) {
+      console.error('❌ Error clearing week:', error)
+      alert('Failed to clear week review. Please try again.')
+    } finally {
+      setClearing(false)
+    }
   }
   
   return (
@@ -132,6 +159,37 @@ export default function SummaryScreen() {
             You've taken time to reflect on your projects and ensure they're aligned with your goals. 
             This regular practice will help you stay focused and productive.
           </p>
+          
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            gap: '16px',
+            marginTop: '24px'
+          }}>
+            <button
+              onClick={handleClearWeek}
+              disabled={clearing}
+              style={{
+                background: clearing ? 'rgba(255, 68, 68, 0.2)' : 'rgba(255, 68, 68, 0.15)',
+                border: '1px solid rgba(255, 68, 68, 0.3)',
+                borderRadius: '8px',
+                color: '#ff4444',
+                padding: '12px 24px',
+                fontSize: '0.95em',
+                fontWeight: '500',
+                cursor: clearing ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                opacity: clearing ? 0.5 : 1,
+                transition: 'all 0.2s ease'
+              }}
+              title="Clear all data for this week's review"
+            >
+              <Trash2 size={18} />
+              {clearing ? 'Clearing...' : 'Clear This Week\'s Review'}
+            </button>
+          </div>
           
           {/* Start New Review button removed as it doesn't fit the summary context */}
         </div>

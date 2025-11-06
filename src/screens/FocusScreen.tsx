@@ -13,9 +13,10 @@ import FloatingInboxButton from '../components/FloatingInboxButton'
 import ProjectNavigator from '../components/ProjectNavigator'
 import CalendarOverlay from '../components/CalendarOverlay'
 import ActionConfirmationOverlay from '../components/ActionConfirmationOverlay'
+import TimelineHistory from '../components/TimelineHistory'
 import { extractNotionLink, getNotionLinkError, hasNotionLink } from '../utils/notionLink'
 import { parseNaturalDate, describeNaturalDate } from '../utils/date-parser'
-import { FileText, SkipForward, CheckCircle, ExternalLink, Calendar } from 'lucide-react'
+import { FileText, SkipForward, CheckCircle, ExternalLink, Calendar, History } from 'lucide-react'
 
 export default function FocusScreen({ projectIndex }: { projectIndex: number }) {
   const { queue, currentProjectQuestions, setDraft, markReviewedAndNext, skipAndNext, markCompleteAndNext, archiveAndNext, somedayMaybeAndNext, loadProjectQuestions, calendarVisible, calendarWeekOf, reviewedProjectsThisSession, toggleCalendar } = useApp()
@@ -37,6 +38,7 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
   const [overlayVariant, setOverlayVariant] = useState<'review' | 'dropped' | 'someday'>('review')
   const [showInboxSuccess, setShowInboxSuccess] = useState(false)
   const [inboxTaskName, setInboxTaskName] = useState('')
+  const [showTimelineHistory, setShowTimelineHistory] = useState(false)
   // Local state to track dynamically injected followup questions
   const [injectedFollowups, setInjectedFollowups] = useState<Map<number, QuestionDTO>>(new Map())
 
@@ -854,7 +856,34 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
           </div>
         </div>
         <div className="focus-main">
-        <h1 className="main-question">{q.prompt}</h1>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+          <h1 className="main-question">{q.prompt}</h1>
+          {(q.id === 'pkg-timeline-subsequent' || q.id === 'pkg-timeline-subsequent-followup' || q.id === 'pkg-timeline-initial') && (
+            <button
+              onClick={() => setShowTimelineHistory(true)}
+              style={{
+                background: 'rgba(255, 255, 255, 0.1)',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                borderRadius: '8px',
+                color: 'white',
+                padding: '8px 16px',
+                fontSize: '0.9em',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                transition: 'all 0.2s ease',
+                marginLeft: '16px'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'}
+              title="View timeline history"
+            >
+              <History size={16} />
+              Timeline History
+            </button>
+          )}
+        </div>
         
         {/* Context Answers Display */}
         {(lastWeekAnswer || initialAnswer) && (
@@ -1095,6 +1124,19 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
         </button>
       </div>
     </div>
+    <CalendarOverlay
+      visible={calendarVisible}
+      weekOf={calendarWeekOf}
+      currentSessionProjects={reviewedProjectsThisSession}
+      onClose={toggleCalendar}
+      isCurrentWeek={true}
+    />
+    <TimelineHistory
+      projectId={project.id}
+      projectName={project.name}
+      visible={showTimelineHistory}
+      onClose={() => setShowTimelineHistory(false)}
+    />
     </>
   )
 }

@@ -1,8 +1,15 @@
 // repos/sessionsRepo.ts
 import { db } from '../db'; import type { SessionDTO, SummaryStats } from '../types'
 
-export async function startSession(): Promise<SessionDTO> {
-  const s: SessionDTO = { id: crypto.randomUUID(), startedAt: new Date().toISOString(), projectsReviewed: 0, projectsSkipped: 0, avgTimePerProjectSec: 0 }
+export async function startSession(weeklyReviewId?: string): Promise<SessionDTO> {
+  const s: SessionDTO = { 
+    id: crypto.randomUUID(), 
+    startedAt: new Date().toISOString(), 
+    projectsReviewed: 0, 
+    projectsSkipped: 0, 
+    avgTimePerProjectSec: 0,
+    weeklyReviewId
+  }
   await db.sessions.add(s); return s
 }
 
@@ -44,4 +51,21 @@ export async function finishSession(sessionID: string, stats: SummaryStats) {
   const s = await db.sessions.get(sessionID); if (!s) return
   s.endedAt = new Date().toISOString(); s.projectsReviewed = stats.reviewed; s.projectsSkipped = stats.skipped; s.avgTimePerProjectSec = stats.avgTimePerProjectSec
   await db.sessions.put(s)
+}
+
+/**
+ * Delete all sessions for a specific weekly review
+ */
+export async function deleteSessionsForWeeklyReview(weeklyReviewId: string): Promise<number> {
+  const sessions = await db.sessions
+    .where('weeklyReviewId')
+    .equals(weeklyReviewId)
+    .toArray()
+  
+  const count = sessions.length
+  for (const session of sessions) {
+    await db.sessions.delete(session.id)
+  }
+  
+  return count
 }
