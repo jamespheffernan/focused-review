@@ -1470,6 +1470,7 @@ try {
   resultData.completionDate = null;
 }
 
+// Serialize and return the result
 JSON.stringify(resultData);`
     
     // Write the JXA script to temporary file
@@ -1528,8 +1529,9 @@ stderr length: ${stderr ? stderr.length : 0}
 JXA execution threw error:
 Error message: ${execError.message}
 Error code: ${execError.code}
-Error stdout: ${execError.stdout}
-Error stderr: ${execError.stderr}
+Error stdout: ${execError.stdout || '(none)'}
+Error stderr: ${execError.stderr || '(none)'}
+Error stack: ${execError.stack || '(none)'}
 `;
       
       try {
@@ -1538,13 +1540,23 @@ Error stderr: ${execError.stderr}
       
       // Include both stdout and stderr in error message for better debugging
       const errorDetails = []
-      if (execError.stdout) errorDetails.push(`stdout: ${execError.stdout}`)
+      if (execError.stdout) {
+        errorDetails.push(`stdout: ${execError.stdout}`)
+        // If stdout contains console.log output but no actual error, note that
+        if (execError.stdout.includes('[JXA]') && !execError.stdout.includes('Error:')) {
+          errorDetails.push('(Note: Script executed but may have failed silently - check stderr or JSON parsing)')
+        }
+      }
       if (execError.stderr) errorDetails.push(`stderr: ${execError.stderr}`)
+      if (!execError.stderr && !execError.stdout) {
+        errorDetails.push(`(No stdout/stderr captured - error: ${execError.message})`)
+      }
       const fullError = errorDetails.length > 0 
         ? `${execError.message}\n${errorDetails.join('\n')}`
         : execError.message
       
       console.error('[OmniFocus] JXA execution error:', fullError)
+      console.error('[OmniFocus] Full error object:', JSON.stringify(execError, Object.getOwnPropertyNames(execError)))
       return { success: false, error: fullError }
     }
     
@@ -1571,6 +1583,12 @@ stderr: ${stderr}
       return { success: false, error: stderr }
     }
     
+    // Check if stdout contains error indicators (JXA errors sometimes go to stdout)
+    if (resultOutput && (resultOutput.includes('Error:') || resultOutput.includes('error:') || resultOutput.includes('SyntaxError') || resultOutput.includes('ReferenceError') || resultOutput.includes('TypeError'))) {
+      console.error('[OmniFocus] JXA error detected in stdout:', resultOutput)
+      return { success: false, error: resultOutput }
+    }
+    
     if (!resultOutput || resultOutput.trim() === '') {
       return { success: false, error: 'No output from JXA script' }
     }
@@ -1582,7 +1600,12 @@ stderr: ${stderr}
       return result
     } catch (parseError) {
       console.error('[OmniFocus] Failed to parse JXA output:', parseError)
-      return { success: false, error: 'Failed to parse result' }
+      console.error('[OmniFocus] Raw output was:', resultOutput)
+      // If parsing fails, check if the output contains error messages
+      if (resultOutput.includes('Error:') || resultOutput.includes('error:')) {
+        return { success: false, error: resultOutput }
+      }
+      return { success: false, error: `Failed to parse result: ${parseError.message}. Output: ${resultOutput.substring(0, 500)}` }
     }
     
   } catch (error) {
