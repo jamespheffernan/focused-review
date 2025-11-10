@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ProjectDTO, QuestionDTO, AnswerDraft, WeeklyReviewDTO } from './types'
+import type { ProjectDTO, QuestionDTO, AnswerDraft, WeeklyReviewDTO, TimelineCommitmentDTO, QuestionType } from './types'
 import * as Projects from './repos/projectsRepo'
 import * as Answers from './repos/answersRepo'
 import * as Sessions from './repos/sessionsRepo'
@@ -8,7 +8,23 @@ import { getQuestionsForProject } from './services/question-loader'
 import { getStartOfISOWeek } from './services/review-formatter'
 import * as NotionSyncQueue from './repos/notionSyncQueueRepo'
 import { syncAnswerToTimelineCache, shouldSyncToTimelineCache } from './services/timeline-cache'
+import { getCommitmentsForWeek, getCommitmentsForProject } from './repos/timelineCommitmentsRepo'
+import { getLastWeekAnswerHint } from './utils/question-hints'
 import { db } from './db'
+
+declare global {
+  interface Window {
+    __APP_TEST_API__?: {
+      resetDatabase: () => Promise<void>
+      insertProject: (project: ProjectDTO) => Promise<void>
+      insertAnswer: (answer: AnswerDraft) => Promise<void>
+      syncTimeline: (answer: AnswerDraft, project: ProjectDTO) => Promise<void>
+      getCommitmentsForWeek: (weekOf: string) => Promise<TimelineCommitmentDTO[]>
+      getCommitmentsForProject: (projectId: string) => Promise<TimelineCommitmentDTO[]>
+      getLastWeekAnswerHint: (questionId: string, questionType: QuestionType) => string | null
+    }
+  }
+}
 
 // Fallback questions if markdown file can't be loaded
 const FALLBACK_QUESTIONS: QuestionDTO[] = [
@@ -178,6 +194,9 @@ export const useApp = create<State>((set, get) => ({
   start: async (ids) => {
     const weekOf = getStartOfISOWeek()
     
+    // TEMPORARILY DISABLED: WeeklyReview functionality
+    // TODO: Re-enable after fixing production build hang
+    /*
     // Get or create weekly review for this week
     const weeklyReview = await WeeklyReviews.getOrCreateWeeklyReviewForWeek(weekOf)
     
@@ -189,6 +208,8 @@ export const useApp = create<State>((set, get) => ({
         weeklyReview.startedAt = new Date().toISOString()
       }
     }
+    */
+    const weeklyReview = undefined
     
     // Get all due projects (including already reviewed ones)
     const allDueProjects = await Projects.fetchDueForReview()
@@ -211,7 +232,7 @@ export const useApp = create<State>((set, get) => ({
     }
     
     // Start session linked to weekly review
-    const s = await Sessions.startSession(weeklyReview.id)
+    const s = await Sessions.startSession(undefined) // weeklyReview?.id)
     
     set({ 
       queue, 
@@ -296,13 +317,16 @@ export const useApp = create<State>((set, get) => ({
       })
     } else {
       // All projects reviewed - mark weekly review as completed
+      // TEMPORARILY DISABLED
+      /*
       const weeklyReview = get().weeklyReview
       if (weeklyReview) {
         await WeeklyReviews.updateWeeklyReviewState(weeklyReview.id, 'completed')
         weeklyReview.state = 'completed'
         weeklyReview.completedAt = new Date().toISOString()
       }
-      set({ route: { name:'summary' }, reviewedProjectsThisSession: reviewed, weeklyReview })
+      */
+      set({ route: { name:'summary' }, reviewedProjectsThisSession: reviewed })
     }
   },
 
@@ -626,4 +650,44 @@ async function startQueueProcessor() {
 // Start queue processor when module loads
 if (typeof window !== 'undefined' && window.electronAPI?.notion) {
   startQueueProcessor()
+}
+
+if (typeof window !== 'undefined' && (import.meta.env.DEV || window.__APP_TEST_API__)) {
+  const ensureDbOpen = async () => {
+    if (!db.isOpen()) {
+      await db.open()
+    }
+  }
+
+  if (!window.__APP_TEST_API__) {
+    window.__APP_TEST_API__ = {
+      resetDatabase: async () => {
+        await db.delete()
+        await db.open()
+      },
+      insertProject: async (project: ProjectDTO) => {
+        await ensureDbOpen()
+        await db.projects.put(project)
+      },
+      insertAnswer: async (answer: AnswerDraft) => {
+        await ensureDbOpen()
+        await db.answers.put(answer)
+      },
+      syncTimeline: async (answer: AnswerDraft, project: ProjectDTO) => {
+        await ensureDbOpen()
+        await syncAnswerToTimelineCache(answer, project)
+      },
+      getCommitmentsForWeek: async (weekOf: string) => {
+        await ensureDbOpen()
+        return await getCommitmentsForWeek(weekOf)
+      },
+      getCommitmentsForProject: async (projectId: string) => {
+        await ensureDbOpen()
+        return await getCommitmentsForProject(projectId)
+      },
+      getLastWeekAnswerHint: (questionId: string, questionType: QuestionType) => {
+        return getLastWeekAnswerHint(questionId, questionType)
+      }
+    }
+  }
 }

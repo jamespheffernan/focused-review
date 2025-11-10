@@ -16,6 +16,7 @@ import ActionConfirmationOverlay from '../components/ActionConfirmationOverlay'
 import TimelineHistory from '../components/TimelineHistory'
 import { extractNotionLink, getNotionLinkError, hasNotionLink } from '../utils/notionLink'
 import { parseNaturalDate, describeNaturalDate } from '../utils/date-parser'
+import { getLastWeekAnswerHint } from '../utils/question-hints'
 import { FileText, SkipForward, CheckCircle, ExternalLink, Calendar, History } from 'lucide-react'
 
 export default function FocusScreen({ projectIndex }: { projectIndex: number }) {
@@ -781,6 +782,7 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
 
   // Calculate progress
   const progress = queue.length > 0 ? ((projectIndex + 1) / queue.length) * 100 : 0
+  const lastWeekHintText = getLastWeekAnswerHint(q.id, q.type)
 
   return (
     <>
@@ -919,7 +921,9 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
                 <div className="last-week-answer">
                   {lastWeekStatus === 'CarriedForward' && '[u] '}{lastWeekAnswer}
                 </div>
-                <div className="last-week-edit-hint">(CLICK OR ENTER TO EDIT)</div>
+                {lastWeekHintText && (
+                  <div className="last-week-edit-hint">{lastWeekHintText}</div>
+                )}
               </div>
             )}
           </div>

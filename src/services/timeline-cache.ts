@@ -1,6 +1,6 @@
 // services/timeline-cache.ts
 import type { AnswerDraft, ProjectDTO } from '../types'
-import { upsertCommitment, deleteCommitmentForProjectAndWeek, getCommitmentForProjectAndWeek } from '../repos/timelineCommitmentsRepo'
+import { upsertCommitment, deleteCommitmentForProjectAndWeek, getCommitmentForProjectAndWeek, getCommitmentsForProject } from '../repos/timelineCommitmentsRepo'
 import { getWeekOffset } from '../utils/calendar-utils'
 
 /**
@@ -45,11 +45,23 @@ export async function syncAnswerToTimelineCache(
     // This is the yes/no question "Is this timeline still realistic?"
     if (answer.text === 'yes') {
       console.log(`📅 User answered 'yes' - looking for previous commitment`)
-      // User confirmed timeline is still realistic - carry forward previous week's commitment
+      // User confirmed timeline is still realistic - carry forward most recent commitment
       const previousWeek = getWeekOffset(answer.weekOf, -1)
       console.log(`📅 Previous week: ${previousWeek}`)
-      const previousCommitment = await getCommitmentForProjectAndWeek(answer.projectID, previousWeek)
+      let previousCommitment = await getCommitmentForProjectAndWeek(answer.projectID, previousWeek)
       console.log(`📅 Previous commitment found:`, previousCommitment)
+      
+      // If no commitment exists for the immediate previous week, fall back to the most recent one
+      if (!previousCommitment) {
+        console.log(`📅 No commitment found for previous week. Looking for most recent commitment before ${answer.weekOf}`)
+        const allCommitments = await getCommitmentsForProject(answer.projectID)
+        if (allCommitments.length > 0) {
+          previousCommitment = allCommitments
+            .filter(commitment => commitment.weekOf < answer.weekOf)
+            .sort((a, b) => b.weekOf.localeCompare(a.weekOf))[0]
+          console.log(`📅 Most recent historical commitment:`, previousCommitment)
+        }
+      }
       
       if (previousCommitment) {
         console.log(`📅 User confirmed timeline - carrying forward from previous week:`, previousCommitment)
