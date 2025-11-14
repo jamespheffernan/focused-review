@@ -1,11 +1,13 @@
 import { create } from 'zustand'
-import type { ProjectDTO, QuestionDTO, AnswerDraft, WeeklyReviewDTO, TimelineCommitmentDTO, QuestionType } from './types'
+import type { ProjectDTO, QuestionDTO, AnswerDraft, WeeklyReviewDTO, TimelineCommitmentDTO, QuestionType, TaskDTO } from './types'
 import * as Projects from './repos/projectsRepo'
 import * as Answers from './repos/answersRepo'
 import * as Sessions from './repos/sessionsRepo'
 import * as WeeklyReviews from './repos/weeklyReviewsRepo'
+import * as Tasks from './repos/tasksRepo'
 import { getQuestionsForProject } from './services/question-loader'
 import { getStartOfISOWeek } from './services/review-formatter'
+import { hasValidTimeline } from './utils/timeline-validation'
 import * as NotionSyncQueue from './repos/notionSyncQueueRepo'
 import { syncAnswerToTimelineCache, shouldSyncToTimelineCache } from './services/timeline-cache'
 import { getCommitmentsForWeek, getCommitmentsForProject } from './repos/timelineCommitmentsRepo'
@@ -22,6 +24,15 @@ declare global {
       getCommitmentsForWeek: (weekOf: string) => Promise<TimelineCommitmentDTO[]>
       getCommitmentsForProject: (projectId: string) => Promise<TimelineCommitmentDTO[]>
       getLastWeekAnswerHint: (questionId: string, questionType: QuestionType) => string | null
+      createTask: (projectId: string, task: Omit<TaskDTO, 'id' | 'lastModified' | 'syncState'>) => Promise<TaskDTO>
+      getTasks: () => Promise<TaskDTO[]>
+      clearTasks: () => Promise<void>
+    }
+    __TEST_STUBS__?: {
+      createTaskCalls: Array<{ projectId: string; taskName: string; taskId: string }>
+      setTaskTagsCalls: Array<{ taskId: string; tags: string[] }>
+      setTaskDueDateCalls: Array<{ taskId: string; dueDate: string | null }>
+      updateTaskCalls: Array<{ taskId: string; updates: any }>
     }
   }
 }
@@ -278,6 +289,13 @@ export const useApp = create<State>((set, get) => ({
   },
 
   markReviewedAndNext: async (project, idx) => {
+    // Validate that project has a valid timeline before marking reviewed
+    const weekOf = getStartOfISOWeek()
+    const hasTimeline = await hasValidTimeline(project.id, weekOf)
+    if (!hasTimeline) {
+      throw new Error('Cannot mark project as reviewed: A valid timeline date is required. Please answer the timeline question with a date before marking reviewed.')
+    }
+    
     // Calculate time spent on this project
     const timeSpentSec = get().projectStartTime 
       ? Math.round((Date.now() - get().projectStartTime!) / 1000)
@@ -299,7 +317,6 @@ export const useApp = create<State>((set, get) => ({
     
     // Trigger Notion sync asynchronously (non-blocking)
     // If it fails, it will be queued for retry
-    const weekOf = getStartOfISOWeek()
     triggerNotionSync(project.id, weekOf).catch(error => {
       console.error('❌ Notion sync failed (queued for retry):', error)
     })
@@ -652,7 +669,7 @@ if (typeof window !== 'undefined' && window.electronAPI?.notion) {
   startQueueProcessor()
 }
 
-if (typeof window !== 'undefined' && (import.meta.env.DEV || window.__APP_TEST_API__)) {
+if (typeof window !== 'undefined') {
   const ensureDbOpen = async () => {
     if (!db.isOpen()) {
       await db.open()
@@ -687,6 +704,18 @@ if (typeof window !== 'undefined' && (import.meta.env.DEV || window.__APP_TEST_A
       },
       getLastWeekAnswerHint: (questionId: string, questionType: QuestionType) => {
         return getLastWeekAnswerHint(questionId, questionType)
+      },
+      createTask: async (projectId: string, task: Omit<TaskDTO, 'id' | 'lastModified' | 'syncState'>) => {
+        await ensureDbOpen()
+        return await Tasks.createTask(projectId, task)
+      },
+      getTasks: async () => {
+        await ensureDbOpen()
+        return await db.tasks.toArray()
+      },
+      clearTasks: async () => {
+        await ensureDbOpen()
+        await db.tasks.clear()
       }
     }
   }
