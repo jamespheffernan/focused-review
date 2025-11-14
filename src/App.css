@@ -538,6 +538,54 @@
   border-top: 1px solid rgba(255, 255, 255, var(--glass-border-subtle));
 }
 
+.selected-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.tag-placeholder {
+  color: rgba(255, 255, 255, 0.45);
+  font-size: var(--font-size-caption);
+  font-style: italic;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, var(--glass-opacity-subtle));
+  border: 1px solid rgba(255, 255, 255, var(--glass-border-subtle));
+  color: var(--color-text-inverse);
+  font-size: var(--font-size-caption);
+  backdrop-filter: blur(12px);
+}
+
+.tag-chip .tag-name {
+  white-space: nowrap;
+}
+
+.tag-remove-btn {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  transition: color 0.2s ease, transform 0.2s ease;
+}
+
+.tag-remove-btn:hover {
+  color: rgba(255, 255, 255, 0.95);
+  transform: scale(1.1);
+}
+
 /* Task More Indicator */
 .task-more-indicator {
   padding: var(--space-3) var(--space-4);
@@ -2278,7 +2326,7 @@
   align-items: center;
   justify-content: center;
   transition: var(--transition-default);
-  z-index: var(--z-overlay);
+  z-index: 9998;
   box-shadow: var(--shadow-medium);
 }
 
