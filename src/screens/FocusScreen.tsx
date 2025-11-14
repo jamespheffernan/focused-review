@@ -17,6 +17,7 @@ import TimelineHistory from '../components/TimelineHistory'
 import { extractNotionLink, getNotionLinkError, hasNotionLink } from '../utils/notionLink'
 import { parseNaturalDate, describeNaturalDate } from '../utils/date-parser'
 import { getLastWeekAnswerHint } from '../utils/question-hints'
+import { hasValidTimeline } from '../utils/timeline-validation'
 import { FileText, SkipForward, CheckCircle, ExternalLink, Calendar, History } from 'lucide-react'
 
 export default function FocusScreen({ projectIndex }: { projectIndex: number }) {
@@ -40,6 +41,8 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
   const [showInboxSuccess, setShowInboxSuccess] = useState(false)
   const [inboxTaskName, setInboxTaskName] = useState('')
   const [showTimelineHistory, setShowTimelineHistory] = useState(false)
+  const [timelineValid, setTimelineValid] = useState<boolean | null>(null)
+  const [timelineError, setTimelineError] = useState<string | null>(null)
   // Local state to track dynamically injected followup questions
   const [injectedFollowups, setInjectedFollowups] = useState<Map<number, QuestionDTO>>(new Map())
 
@@ -94,11 +97,40 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
     setOverlayMessage('')
     setShowInboxSuccess(false) // Reset inbox success overlay when project changes
     setInjectedFollowups(new Map()) // Clear injected followups when switching projects
+    setTimelineValid(null) // Reset timeline validation state
+    setTimelineError(null) // Reset timeline error state
     // Load context-aware questions for the current project
     loadProjectQuestions(project)
     // Auto-load tasks for the current project
     loadProjectTasks()
   }, [project?.id, projectIndex, loadProjectQuestions, loadProjectTasks, project])
+
+  // Check timeline validity when project or answers change
+  useEffect(() => {
+    if (!project) {
+      setTimelineValid(null)
+      setTimelineError(null)
+      return
+    }
+
+    const checkTimeline = async () => {
+      try {
+        const isValid = await hasValidTimeline(project.id)
+        setTimelineValid(isValid)
+        if (!isValid) {
+          setTimelineError('A valid timeline date is required before marking reviewed. Please answer the timeline question with a date.')
+        } else {
+          setTimelineError(null)
+        }
+      } catch (error) {
+        console.error('Error checking timeline validity:', error)
+        setTimelineValid(false)
+        setTimelineError('Error checking timeline. Please try again.')
+      }
+    }
+
+    checkTimeline()
+  }, [project?.id, answeredQuestions, currentAnswer, q?.id])
 
   // Handle task updates
   const handleTaskUpdate = async (taskId: string, updates: Partial<TaskDTO>) => {
@@ -648,14 +680,34 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
   }
 
   // Function to handle mark reviewed with overlay
-  function handleMarkReviewed() {
-    setOverlayVariant('review')
-    setOverlayMessage('✓ Project Reviewed')
-    setOverlayVisible(true)
-    setTimeout(() => {
-      setOverlayVisible(false)
-      markReviewedAndNext(project, projectIndex)
-    }, 1000)
+  async function handleMarkReviewed() {
+    // Check timeline validity before proceeding
+    if (timelineValid === false) {
+      // Error message is already set in state, just return
+      return
+    }
+
+    try {
+      setOverlayVariant('review')
+      setOverlayMessage('✓ Project Reviewed')
+      setOverlayVisible(true)
+      setTimeout(async () => {
+        setOverlayVisible(false)
+        try {
+          await markReviewedAndNext(project, projectIndex)
+        } catch (error) {
+          // Handle validation error from store
+          const errorMessage = error instanceof Error ? error.message : 'Failed to mark project as reviewed'
+          setTimelineError(errorMessage)
+          setTimelineValid(false)
+        }
+      }, 1000)
+    } catch (error) {
+      // Handle any other errors
+      const errorMessage = error instanceof Error ? error.message : 'Failed to mark project as reviewed'
+      setTimelineError(errorMessage)
+      setTimelineValid(false)
+    }
   }
 
   // Function to open Notion deep link for current project
@@ -1095,12 +1147,32 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
     <div className="focus-footer-two-row">
       {/* Row 1: Primary Actions */}
       <div className="button-row primary-row">
-        <button 
-          className="action-button mark-reviewed"
-          onClick={handleMarkReviewed}
-        >
-          Mark Reviewed
-        </button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
+          <button 
+            className="action-button mark-reviewed"
+            onClick={handleMarkReviewed}
+            disabled={timelineValid === false}
+            style={{
+              opacity: timelineValid === false ? 0.5 : 1,
+              cursor: timelineValid === false ? 'not-allowed' : 'pointer'
+            }}
+          >
+            Mark Reviewed
+          </button>
+          {timelineError && (
+            <div style={{
+              fontSize: '0.75em',
+              color: '#ff4444',
+              padding: '4px 8px',
+              background: 'rgba(255, 68, 68, 0.1)',
+              border: '1px solid rgba(255, 68, 68, 0.3)',
+              borderRadius: '4px',
+              textAlign: 'center'
+            }}>
+              {timelineError}
+            </div>
+          )}
+        </div>
         <button 
           className="action-button skip"
           onClick={() => skipAndNext(projectIndex)}
