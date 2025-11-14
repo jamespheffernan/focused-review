@@ -1842,6 +1842,7 @@
   transition: transform var(--transition-default), box-shadow var(--transition-default), background var(--transition-default), border-color var(--transition-default);
   color: var(--color-text-inverse);
   min-width: 160px;
+  background: rgba(255, 255, 255, var(--glass-opacity-subtle)); /* Default background */
 }
 
 .action-button:hover {
@@ -1851,12 +1852,16 @@
 
 /* Primary Row Buttons */
 .action-button.mark-reviewed {
+  background: rgba(52, 199, 89, 0.3); /* Fallback for color-mix */
   background: color-mix(in srgb, var(--color-success) 30%, transparent);
+  border-color: rgba(52, 199, 89, 0.5); /* Fallback for color-mix */
   border-color: color-mix(in srgb, var(--color-success) 50%, transparent);
 }
 
 .action-button.mark-reviewed:hover {
+  background: rgba(52, 199, 89, 0.5); /* Fallback for color-mix */
   background: color-mix(in srgb, var(--color-success) 50%, transparent);
+  border-color: rgba(52, 199, 89, 0.7); /* Fallback for color-mix */
   border-color: color-mix(in srgb, var(--color-success) 70%, transparent);
 }
 
@@ -1872,32 +1877,44 @@
 
 /* Management Row Buttons */
 .action-button.complete-project {
+  background: rgba(10, 132, 255, 0.3); /* Fallback for color-mix */
   background: color-mix(in srgb, var(--color-action) 30%, transparent);
+  border-color: rgba(10, 132, 255, 0.5); /* Fallback for color-mix */
   border-color: color-mix(in srgb, var(--color-action) 50%, transparent);
 }
 
 .action-button.complete-project:hover {
+  background: rgba(10, 132, 255, 0.5); /* Fallback for color-mix */
   background: color-mix(in srgb, var(--color-action) 50%, transparent);
+  border-color: rgba(10, 132, 255, 0.7); /* Fallback for color-mix */
   border-color: color-mix(in srgb, var(--color-action) 70%, transparent);
 }
 
 .action-button.archive {
+  background: rgba(255, 159, 10, 0.3); /* Fallback for color-mix */
   background: color-mix(in srgb, var(--color-warning) 30%, transparent);
+  border-color: rgba(255, 159, 10, 0.5); /* Fallback for color-mix */
   border-color: color-mix(in srgb, var(--color-warning) 50%, transparent);
 }
 
 .action-button.archive:hover {
+  background: rgba(255, 159, 10, 0.5); /* Fallback for color-mix */
   background: color-mix(in srgb, var(--color-warning) 50%, transparent);
+  border-color: rgba(255, 159, 10, 0.7); /* Fallback for color-mix */
   border-color: color-mix(in srgb, var(--color-warning) 70%, transparent);
 }
 
 .action-button.someday-maybe {
+  background: rgba(152, 152, 157, 0.3); /* Fallback for color-mix */
   background: color-mix(in srgb, var(--color-neutral) 30%, transparent);
+  border-color: rgba(152, 152, 157, 0.5); /* Fallback for color-mix */
   border-color: color-mix(in srgb, var(--color-neutral) 50%, transparent);
 }
 
 .action-button.someday-maybe:hover {
+  background: rgba(152, 152, 157, 0.5); /* Fallback for color-mix */
   background: color-mix(in srgb, var(--color-neutral) 50%, transparent);
+  border-color: rgba(152, 152, 157, 0.7); /* Fallback for color-mix */
   border-color: color-mix(in srgb, var(--color-neutral) 70%, transparent);
 }
 
@@ -2311,7 +2328,7 @@
 
 .floating-inbox-button {
   position: fixed;
-  bottom: var(--space-6);
+  bottom: 100px; /* Position above footer (footer is ~80px tall) */
   left: var(--space-6);
   width: var(--button-height-medium); /* 44px - better size */
   height: var(--button-height-medium);
@@ -2493,7 +2510,7 @@
   }
   
   .floating-inbox-button {
-    bottom: 20px;
+    bottom: 100px; /* Keep above footer on mobile too */
     left: 20px;
     width: 48px;
     height: 48px;
