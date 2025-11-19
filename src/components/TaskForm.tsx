@@ -17,16 +17,17 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
   const [name, setName] = useState(task?.name || '')
   const [dueDate, setDueDate] = useState(task?.dueDate ? task.dueDate.split('T')[0] : '')
   const [deferDate, setDeferDate] = useState(task?.deferDate ? task.deferDate.split('T')[0] : '')
-  const [context, setContext] = useState(task?.context || '')
+  const [selectedTags, setSelectedTags] = useState<string[]>(task?.tags || [])
+  const [tagInput, setTagInput] = useState('')
   const [note, setNote] = useState(task?.note || '')
   const [error, setError] = useState('')
   
   // Context autocomplete state
-  const [availableContexts, setAvailableContexts] = useState<Array<{id: string; name: string}>>([])
-  const [loadingContexts, setLoadingContexts] = useState(false)
-  const [showContextDropdown, setShowContextDropdown] = useState(false)
-  const [filteredContexts, setFilteredContexts] = useState<Array<{id: string; name: string}>>([])
-  const [highlightedIndex, setHighlightedIndex] = useState(-1)
+  const [availableTags, setAvailableTags] = useState<Array<{id: string; name: string}>>([])
+  const [loadingTags, setLoadingTags] = useState(false)
+  const [showTagDropdown, setShowTagDropdown] = useState(false)
+  const [filteredTags, setFilteredTags] = useState<Array<{id: string; name: string}>>([])
+  const [highlightedTagIndex, setHighlightedTagIndex] = useState(-1)
   
   // Natural language date state
   const [naturalDueDate, setNaturalDueDate] = useState('')
@@ -36,29 +37,29 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
   const [showDueDatePicker, setShowDueDatePicker] = useState(false)
   const [showDeferDatePicker, setShowDeferDatePicker] = useState(false)
 
-  // Fetch contexts from OmniFocus
+  // Fetch tags from OmniFocus
   useEffect(() => {
-    const fetchContexts = async () => {
-      console.log('[TaskForm] Starting to fetch contexts...')
-      setLoadingContexts(true)
+    const fetchTags = async () => {
+      console.log('[TaskForm] Starting to fetch tags...')
+      setLoadingTags(true)
       try {
-        const contexts = await omnifocusBridge.getContexts()
-        console.log('[TaskForm] Received contexts:', contexts)
-        setAvailableContexts(contexts)
-        setFilteredContexts(contexts)
-        console.log(`[TaskForm] Loaded ${contexts.length} contexts from OmniFocus`)
+        const tags = await omnifocusBridge.getTags()
+        console.log('[TaskForm] Received tags:', tags)
+        setAvailableTags(tags)
+        setFilteredTags(tags)
+        console.log(`[TaskForm] Loaded ${tags.length} tags from OmniFocus`)
       } catch (error) {
-        console.error('[TaskForm] Failed to fetch contexts:', error)
+        console.error('[TaskForm] Failed to fetch tags:', error)
       } finally {
-        setLoadingContexts(false)
+        setLoadingTags(false)
       }
     }
     
-    fetchContexts()
+    fetchTags()
   }, [])
 
-  // Helpers: sanitize and fuzzy-match context/tag names against available contexts
-  const normalizeContextInput = (value: string): string => {
+  // Helpers: sanitize and fuzzy-match tag names against available tags
+  const normalizeTagInput = (value: string): string => {
     return value.trim().replace(/[\s,]+$/g, '')
   }
 
@@ -84,14 +85,14 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
     return dp[m][n]
   }
 
-  const bestContextMatch = (
+  const bestTagMatch = (
     rawInput: string,
-    contexts: Array<{ id: string; name: string }>
+    tags: Array<{ id: string; name: string }>
   ): { match?: { id: string; name: string }; ambiguous?: boolean } => {
-    const input = normalizeContextInput(rawInput)
+    const input = normalizeTagInput(rawInput)
     if (!input) return {}
     const lower = input.toLowerCase()
-    const names = contexts.map(c => ({ ...c, lower: c.name.toLowerCase() }))
+    const names = tags.map(c => ({ ...c, lower: c.name.toLowerCase() }))
 
     // 1) Exact (case-insensitive)
     const exact = names.find(c => c.lower === lower)
@@ -122,39 +123,98 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
     return {}
   }
 
-  // Filter contexts as user types
-  useEffect(() => {
-    if (context.trim() === '') {
-      setFilteredContexts(availableContexts)
-    } else {
-      const filtered = availableContexts.filter(ctx => 
-        ctx.name.toLowerCase().includes(context.toLowerCase())
-      )
-      setFilteredContexts(filtered)
-    }
-    console.log('[TaskForm] Filtered contexts:', filteredContexts.length, 'Show dropdown:', showContextDropdown)
-  }, [context, availableContexts])
+  const removeTag = (tagToRemove: string) => {
+    setSelectedTags(prev => prev.filter(tag => tag !== tagToRemove))
+    setError('')
+  }
 
-  // Reset highlighted index when filtered contexts change
+  const addTagFromInput = (rawInput: string): boolean => {
+    const normalized = normalizeTagInput(rawInput)
+    if (!normalized) {
+      return false
+    }
+    if (!availableTags || availableTags.length === 0) {
+      setError('Tags are still loading. Please try again in a moment.')
+      return false
+    }
+    const { match, ambiguous } = bestTagMatch(normalized, availableTags)
+    if (ambiguous) {
+      setError('Multiple matching tags found. Please pick from the dropdown.')
+      setShowTagDropdown(true)
+      return false
+    }
+    if (!match) {
+      setError('Tag not found. Please pick an existing tag.')
+      setShowTagDropdown(true)
+      return false
+    }
+    let added = false
+    setSelectedTags(prev => {
+      const exists = prev.some(tag => tag.toLowerCase() === match.name.toLowerCase())
+      if (exists) {
+        return prev
+      }
+      added = true
+      return [...prev, match.name]
+    })
+    if (!added) {
+      setError(`Tag "${match.name}" already added`)
+      return false
+    }
+    setTagInput('')
+    setShowTagDropdown(false)
+    setError('')
+    return true
+  }
+
+  // Filter tag suggestions as user types
   useEffect(() => {
-    setHighlightedIndex(-1)
-  }, [filteredContexts])
+    const baseList = availableTags.filter(tag => 
+      !selectedTags.some(selected => selected.toLowerCase() === tag.name.toLowerCase())
+    )
+    if (tagInput.trim() === '') {
+      setFilteredTags(baseList)
+    } else {
+      const filtered = baseList.filter(tag =>
+        tag.name.toLowerCase().includes(tagInput.toLowerCase())
+      )
+      setFilteredTags(filtered)
+    }
+    console.log('[TaskForm] Filtered tags:', filteredTags.length, 'Show dropdown:', showTagDropdown)
+  }, [tagInput, availableTags, selectedTags])
+
+  // Reset highlighted index when filtered tags change
+  useEffect(() => {
+    setHighlightedTagIndex(-1)
+  }, [filteredTags])
 
   // Reset highlighted index when dropdown closes
   useEffect(() => {
-    if (!showContextDropdown) {
-      setHighlightedIndex(-1)
+    if (!showTagDropdown) {
+      setHighlightedTagIndex(-1)
     }
-  }, [showContextDropdown])
+  }, [showTagDropdown])
 
   // Handle natural language due date input
   useEffect(() => {
     if (naturalDueDate.trim()) {
-      const parsed = parseNaturalDate(naturalDueDate)
-      const preview = describeNaturalDate(naturalDueDate)
+      const trimmedText = naturalDueDate.trim()
+      let textToParse = trimmedText
+      
+      // Auto-prepend "in " if parsing fails and text doesn't already start with "in "
+      const parsed = parseNaturalDate(trimmedText)
+      if (!parsed && !trimmedText.toLowerCase().startsWith('in ')) {
+        textToParse = `in ${trimmedText}`
+        // Update the state with the modified text
+        setNaturalDueDate(textToParse)
+        return // Exit early, this will trigger the effect again with the updated text
+      }
+      
+      const preview = describeNaturalDate(textToParse)
       setDueDatePreview(preview)
-      if (parsed) {
-        setDueDate(parsed)
+      const finalParsed = parseNaturalDate(textToParse)
+      if (finalParsed) {
+        setDueDate(finalParsed)
       }
     } else {
       setDueDatePreview(null)
@@ -164,11 +224,23 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
   // Handle natural language defer date input
   useEffect(() => {
     if (naturalDeferDate.trim()) {
-      const parsed = parseNaturalDate(naturalDeferDate)
-      const preview = describeNaturalDate(naturalDeferDate)
+      const trimmedText = naturalDeferDate.trim()
+      let textToParse = trimmedText
+      
+      // Auto-prepend "in " if parsing fails and text doesn't already start with "in "
+      const parsed = parseNaturalDate(trimmedText)
+      if (!parsed && !trimmedText.toLowerCase().startsWith('in ')) {
+        textToParse = `in ${trimmedText}`
+        // Update the state with the modified text
+        setNaturalDeferDate(textToParse)
+        return // Exit early, this will trigger the effect again with the updated text
+      }
+      
+      const preview = describeNaturalDate(textToParse)
       setDeferDatePreview(preview)
-      if (parsed) {
-        setDeferDate(parsed)
+      const finalParsed = parseNaturalDate(textToParse)
+      if (finalParsed) {
+        setDeferDate(finalParsed)
       }
     } else {
       setDeferDatePreview(null)
@@ -201,27 +273,19 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
       return
     }
 
-    // Resolve and validate context if provided
-    let finalContext: string | undefined = undefined
-    if (context && context.trim()) {
-      const normalized = normalizeContextInput(context)
-      if (!availableContexts || availableContexts.length === 0) {
-        setError('Contexts are still loading. Please try again in a moment.')
+    // Attempt to add the pending tag input before saving
+    if (tagInput.trim()) {
+      const added = addTagFromInput(tagInput)
+      if (!added) {
         return
       }
-      const { match, ambiguous } = bestContextMatch(normalized, availableContexts)
-      if (ambiguous) {
-        setError('Multiple matching contexts found. Please pick from the dropdown.')
-        setShowContextDropdown(true)
-        return
-      }
-      if (!match) {
-        setError('Context not found. Please pick an existing tag.')
-        setShowContextDropdown(true)
-        return
-      }
-      finalContext = match.name
     }
+
+    const normalizedTags = Array.from(new Set(
+      selectedTags
+        .map(tag => tag.trim())
+        .filter(tag => tag.length > 0)
+    ))
 
     if (isEditMode) {
       // Edit mode - return partial updates
@@ -251,15 +315,18 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
         updates.deferDate = newDeferDate
       }
 
-      // Only include context if it changed
-      const originalContext = task?.context || ''
-      const contextChanged = (context || '') !== originalContext
-      if (contextChanged) {
-        if (finalContext) {
-          updates.context = finalContext
-        } else {
-          updates.context = undefined
-        }
+      // Only include tags if they changed
+      const originalTags = task?.tags || []
+      const normalizedOriginal = Array.from(new Set(
+        originalTags.map(tag => tag.trim()).filter(tag => tag.length > 0).map(tag => tag.toLowerCase())
+      ))
+      const normalizedNew = normalizedTags.map(tag => tag.toLowerCase())
+      normalizedNew.sort()
+      normalizedOriginal.sort()
+      const tagsChanged = normalizedNew.length !== normalizedOriginal.length ||
+        normalizedNew.some((tag, index) => tag !== normalizedOriginal[index])
+      if (tagsChanged) {
+        updates.tags = normalizedTags
       }
 
       // Only include note if it changed (compare trimmed versions to avoid false positives)
@@ -280,7 +347,7 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
         flagged: false,
         completed: false,
         note: note.trim() || undefined,
-        context: finalContext || undefined,
+        tags: normalizedTags,
         dueDate: dueDate ? createDueDate(dueDate) : undefined,
         deferDate: deferDate ? createDeferDate(deferDate) : undefined,
       }
@@ -291,7 +358,8 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
       setName('')
       setDueDate('')
       setDeferDate('')
-      setContext('')
+      setSelectedTags([])
+      setTagInput('')
       setNote('')
       setError('')
       setNaturalDueDate('')
@@ -314,36 +382,45 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
     }
   }
 
-  const handleContextKeyDown = (e: React.KeyboardEvent) => {
-    // Handle keyboard navigation for context dropdown
-    // Limit navigation to displayed items (max 8)
-    const maxVisibleIndex = Math.min(7, filteredContexts.length - 1)
-    
+  const handleTagInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    const maxVisibleIndex = Math.min(7, filteredTags.length - 1)
+
     if (e.key === 'ArrowDown') {
       e.preventDefault()
-      if (filteredContexts.length > 0) {
-        setShowContextDropdown(true)
-        setHighlightedIndex(prev => {
+      if (filteredTags.length > 0) {
+        setShowTagDropdown(true)
+        setHighlightedTagIndex(prev => {
           if (prev < 0) return 0
           return Math.min(prev + 1, maxVisibleIndex)
         })
       }
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault()
-      if (showContextDropdown && filteredContexts.length > 0) {
-        setHighlightedIndex(prev => Math.max(0, prev - 1))
-      }
-    } else if (e.key === 'Enter') {
-      if (showContextDropdown && highlightedIndex >= 0 && highlightedIndex <= maxVisibleIndex && filteredContexts.length > 0) {
-        e.preventDefault()
-        const selectedContext = filteredContexts[highlightedIndex]
-        setContext(selectedContext.name)
-        setShowContextDropdown(false)
-        return // Don't propagate Enter to parent handler
-      }
+      return
     }
-    
-    // For other keys, call parent handler
+
+    if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      if (showTagDropdown && filteredTags.length > 0) {
+        setHighlightedTagIndex(prev => Math.max(0, prev - 1))
+      }
+      return
+    }
+
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      if (showTagDropdown && highlightedTagIndex >= 0 && highlightedTagIndex <= maxVisibleIndex && filteredTags.length > 0) {
+        const selectedTag = filteredTags[highlightedTagIndex]
+        addTagFromInput(selectedTag.name)
+        return
+      }
+      addTagFromInput(tagInput)
+      return
+    }
+
+    if (e.key === 'Backspace' && tagInput === '' && selectedTags.length > 0) {
+      removeTag(selectedTags[selectedTags.length - 1])
+      return
+    }
+
     handleKeyDown(e)
   }
 
@@ -488,43 +565,57 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
 
       <div className="editor-field context-field-wrapper">
         <label className="field-label">
-          Context/Tag {loadingContexts && <span className="loading-indicator">Loading...</span>}
+          Tags {loadingTags && <span className="loading-indicator">Loading...</span>}
         </label>
+        <div className="selected-tags">
+          {selectedTags.length === 0 && (
+            <span className="tag-placeholder">No tags selected</span>
+          )}
+          {selectedTags.map(tag => (
+            <span key={tag} className="tag-chip">
+              <span className="tag-name">{tag}</span>
+              <button
+                type="button"
+                className="tag-remove-btn"
+                onClick={() => removeTag(tag)}
+                aria-label={`Remove tag ${tag}`}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
         <div className="context-autocomplete">
           <input
             className="task-context-input"
             type="text"
-            value={context}
+            value={tagInput}
             onChange={(e) => {
-              setContext(e.target.value)
-              setShowContextDropdown(true)
+              setTagInput(e.target.value)
+              setShowTagDropdown(true)
             }}
             onFocus={() => {
-              console.log('[TaskForm] Context input focused, showing dropdown')
-              setShowContextDropdown(true)
+              setShowTagDropdown(true)
             }}
-            onBlur={() => setTimeout(() => setShowContextDropdown(false), 200)}
-            onKeyDown={handleContextKeyDown}
-            placeholder="Type or select context"
+            onBlur={() => setTimeout(() => setShowTagDropdown(false), 200)}
+            onKeyDown={handleTagInputKeyDown}
+            placeholder="Type to add tag"
           />
-          {showContextDropdown && filteredContexts.length > 0 && (
+          {showTagDropdown && filteredTags.length > 0 && (
             <div className="context-dropdown">
-              {filteredContexts.slice(0, 8).map((ctx, index) => (
+              {filteredTags.slice(0, 8).map((tag, index) => (
                 <div
-                  key={ctx.id}
-                  className={`context-option ${index === highlightedIndex ? 'highlighted' : ''}`}
-                  onClick={() => {
-                    setContext(ctx.name)
-                    setShowContextDropdown(false)
-                  }}
-                  onMouseEnter={() => setHighlightedIndex(index)}
+                  key={tag.id}
+                  className={`context-option ${index === highlightedTagIndex ? 'highlighted' : ''}`}
+                  onClick={() => addTagFromInput(tag.name)}
+                  onMouseEnter={() => setHighlightedTagIndex(index)}
                 >
-                  {ctx.name}
+                  {tag.name}
                 </div>
               ))}
-              {filteredContexts.length > 8 && (
+              {filteredTags.length > 8 && (
                 <div className="context-option-more">
-                  + {filteredContexts.length - 8} more
+                  + {filteredTags.length - 8} more
                 </div>
               )}
             </div>
