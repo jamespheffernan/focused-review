@@ -4,6 +4,7 @@ import QueueScreen from './screens/QueueScreen'
 import FocusScreen from './screens/FocusScreen'
 import SummaryScreen from './screens/SummaryScreen'
 import QuestionsScreen from './screens/QuestionsScreen'
+import DateParsingTest from './components/DateParsingTest'
 import { taskSyncQueue } from './services/taskSyncQueue'
 import { migrateToQuestionPackages } from './services/questionPackage-migration'
 import './App.css'
@@ -47,6 +48,11 @@ export default function App() {
       })
     }
   }, []) // Remove syncFromOmniFocus from dependencies to prevent duplicate calls
+  
+  // Test page - accessible via URL parameter: ?test=date-parsing
+  if (typeof window !== 'undefined' && window.location.search.includes('test=date-parsing')) {
+    return <DateParsingTest />
+  }
   
   if (route.name === 'queue') return <QueueScreen />
   if (route.name === 'focus') return <FocusScreen projectIndex={route.idx} />

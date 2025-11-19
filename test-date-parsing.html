@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Date Parsing Test</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      padding: 40px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 12px;
+      padding: 30px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    h1 {
+      margin-bottom: 30px;
+      color: #333;
+    }
+    .test-section {
+      margin-bottom: 30px;
+      padding: 20px;
+      background: #f8f9fa;
+      border-radius: 8px;
+    }
+    .test-section h2 {
+      margin-bottom: 15px;
+      color: #555;
+      font-size: 18px;
+    }
+    .input-group {
+      margin-bottom: 15px;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: 500;
+      color: #666;
+    }
+    input {
+      width: 100%;
+      padding: 10px;
+      border: 2px solid #ddd;
+      border-radius: 6px;
+      font-size: 16px;
+    }
+    input:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+    .result {
+      margin-top: 10px;
+      padding: 15px;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+    .result.success {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    .result.error {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+    .result.info {
+      background: #d1ecf1;
+      color: #0c5460;
+      border: 1px solid #bee5eb;
+    }
+    .test-cases {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 10px;
+      margin-top: 15px;
+    }
+    .test-case {
+      padding: 10px;
+      background: white;
+      border: 2px solid #ddd;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .test-case:hover {
+      border-color: #667eea;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    .test-case.active {
+      border-color: #667eea;
+      background: #f0f4ff;
+    }
+    .auto-prepend-indicator {
+      display: inline-block;
+      margin-left: 10px;
+      padding: 2px 8px;
+      background: #ffc107;
+      color: #856404;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📅 Date Parsing Test Page</h1>
+    
+    <div class="test-section">
+      <h2>Interactive Test</h2>
+      <div class="input-group">
+        <label for="test-input">Enter a date expression:</label>
+        <input 
+          type="text" 
+          id="test-input" 
+          placeholder="e.g., '2 weeks', 'Friday', 'tomorrow'"
+          autocomplete="off"
+        />
+      </div>
+      <div id="result"></div>
+    </div>
+
+    <div class="test-section">
+      <h2>Quick Test Cases</h2>
+      <p style="margin-bottom: 10px; color: #666;">Click any test case to try it:</p>
+      <div class="test-cases" id="test-cases"></div>
+    </div>
+
+    <div class="test-section">
+      <h2>Batch Test Results</h2>
+      <div id="batch-results"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    // Import chrono-node (we'll use a CDN version for simplicity)
+    // For this test, we'll simulate the parsing logic
+    
+    // Test cases to verify
+    const testCases = [
+      'tomorrow',
+      'next friday',
+      'in 2 weeks',
+      '2 weeks',  // Should auto-prepend "in "
+      'Friday',   // Should auto-prepend "in "
+      '3 months', // Should auto-prepend "in "
+      '6 days',   // Should auto-prepend "in "
+      'Monday',   // Should auto-prepend "in "
+      '1 year',   // Should auto-prepend "in "
+      'next month',
+      'invalid date string',
+      'not a date',
+      'in 2 weeks', // Already has "in " - should not double-prepend
+      'In 2 weeks', // Case insensitive check
+    ];
+
+    // Since we can't import the actual module in a static HTML file,
+    // we'll create a test that shows what should happen
+    // In a real scenario, this would use the actual date-parser module
+    
+    function displayResult(input, result, autoPrepended = false) {
+      const resultDiv = document.getElementById('result');
+      if (result) {
+        resultDiv.innerHTML = `
+          <div class="result success">
+            <strong>✅ Parsed successfully!</strong><br>
+            <strong>Input:</strong> "${input}"${autoPrepended ? '<span class="auto-prepend-indicator">AUTO-PREPENDED "in "</span>' : ''}<br>
+            <strong>Parsed Date:</strong> ${result}<br>
+            <strong>Formatted:</strong> ${new Date(result + 'T12:00:00').toLocaleDateString('en-US', { 
+              weekday: 'long',
+              year: 'numeric', 
+              month: 'long', 
+              day: 'numeric' 
+            })}
+          </div>
+        `;
+      } else {
+        resultDiv.innerHTML = `
+          <div class="result error">
+            <strong>❌ Failed to parse</strong><br>
+            <strong>Input:</strong> "${input}"<br>
+            Could not parse this date expression.
+          </div>
+        `;
+      }
+    }
+
+    // Setup interactive input
+    const testInput = document.getElementById('test-input');
+    testInput.addEventListener('input', async (e) => {
+      const input = e.target.value.trim();
+      if (!input) {
+        document.getElementById('result').innerHTML = '';
+        return;
+      }
+
+      // In a real implementation, this would call the actual parseNaturalDate function
+      // For now, we'll show a message that this needs to be tested in the actual app
+      document.getElementById('result').innerHTML = `
+        <div class="result info">
+          <strong>ℹ️ Note:</strong> This test page demonstrates the expected behavior.<br>
+          To test with the actual date parser, use the React app or run the unit tests.<br><br>
+          <strong>Expected behavior for "${input}":</strong><br>
+          • If parsing fails and input doesn't start with "in ", it should auto-prepend "in "<br>
+          • The parser should handle: ${testCases.slice(0, 5).join(', ')}...
+        </div>
+      `;
+    });
+
+    // Setup test cases
+    const testCasesDiv = document.getElementById('test-cases');
+    testCases.forEach(testCase => {
+      const div = document.createElement('div');
+      div.className = 'test-case';
+      div.textContent = testCase;
+      div.addEventListener('click', () => {
+        testInput.value = testCase;
+        testInput.dispatchEvent(new Event('input'));
+        // Highlight active
+        document.querySelectorAll('.test-case').forEach(c => c.classList.remove('active'));
+        div.classList.add('active');
+      });
+      testCasesDiv.appendChild(div);
+    });
+
+    // Batch test results
+    const batchResultsDiv = document.getElementById('batch-results');
+    batchResultsDiv.innerHTML = `
+      <div class="result info">
+        <strong>Batch Test Instructions:</strong><br>
+        1. Run unit tests: <code>npm test -- src/utils/__tests__/date-parser.test.ts</code><br>
+        2. Test in FocusScreen: Enter dates in text-parsed questions<br>
+        3. Test in TaskForm: Enter dates in due/defer date fields<br><br>
+        <strong>Expected Auto-Prepend Cases:</strong><br>
+        • "2 weeks" → should become "in 2 weeks"<br>
+        • "Friday" → should become "in Friday"<br>
+        • "3 months" → should become "in 3 months"<br>
+        • "in 2 weeks" → should NOT double-prepend<br>
+      </div>
+    `;
+  </script>
+</body>
+</html>
+
