@@ -45,9 +45,27 @@ export default function TaskItem({
 
   const dueInfo = formatDate(task.dueDate)
 
-  const taskTags = Array.isArray(task.tags) && task.tags.length > 0
-    ? task.tags
-    : (task.context ? [task.context] : [])
+  // Normalize tags - handle both array and legacy context field
+  const taskTags = (() => {
+    if (Array.isArray(task.tags) && task.tags.length > 0) {
+      return task.tags.filter(tag => tag && tag.trim().length > 0)
+    }
+    if (task.context && task.context.trim().length > 0) {
+      return [task.context.trim()]
+    }
+    return []
+  })()
+  
+  // Debug logging
+  if (taskTags.length > 0) {
+    console.log('[TaskItem] Rendering task with tags:', { 
+      taskId: task.id, 
+      taskName: task.name,
+      tags: taskTags,
+      rawTags: task.tags,
+      context: task.context
+    })
+  }
 
   // Simplified view: checkbox + task name + metadata
   return (

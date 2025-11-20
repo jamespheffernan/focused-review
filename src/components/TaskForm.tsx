@@ -13,14 +13,45 @@ interface TaskFormProps {
 export default function TaskForm({ projectId, task, onSave, onCancel }: TaskFormProps) {
   const isEditMode = !!task
   
+  // Normalize tags from task - handle both array and legacy context field
+  const normalizeTaskTags = (task: TaskDTO | undefined): string[] => {
+    if (!task) return []
+    if (Array.isArray(task.tags) && task.tags.length > 0) {
+      return task.tags.filter(tag => tag && tag.trim().length > 0)
+    }
+    if (task.context && task.context.trim().length > 0) {
+      return [task.context.trim()]
+    }
+    return []
+  }
+  
   // Form state
   const [name, setName] = useState(task?.name || '')
   const [dueDate, setDueDate] = useState(task?.dueDate ? task.dueDate.split('T')[0] : '')
   const [deferDate, setDeferDate] = useState(task?.deferDate ? task.deferDate.split('T')[0] : '')
-  const [selectedTags, setSelectedTags] = useState<string[]>(task?.tags || [])
+  const [selectedTags, setSelectedTags] = useState<string[]>(normalizeTaskTags(task))
   const [tagInput, setTagInput] = useState('')
   const [note, setNote] = useState(task?.note || '')
   const [error, setError] = useState('')
+  
+  // Update selectedTags when task prop changes (e.g., when editing a different task)
+  useEffect(() => {
+    if (task) {
+      const normalized = normalizeTaskTags(task)
+      console.log('[TaskForm] Task loaded:', { 
+        taskId: task.id, 
+        taskName: task.name,
+        rawTags: task.tags,
+        context: task.context,
+        normalizedTags: normalized 
+      })
+      setSelectedTags(normalized)
+      setName(task.name || '')
+      setDueDate(task.dueDate ? task.dueDate.split('T')[0] : '')
+      setDeferDate(task.deferDate ? task.deferDate.split('T')[0] : '')
+      setNote(task.note || '')
+    }
+  }, [task?.id]) // Update when task ID changes
   
   // Context autocomplete state
   const [availableTags, setAvailableTags] = useState<Array<{id: string; name: string}>>([])
@@ -197,53 +228,31 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
 
   // Handle natural language due date input
   useEffect(() => {
-    if (naturalDueDate.trim()) {
-      const trimmedText = naturalDueDate.trim()
-      let textToParse = trimmedText
-      
-      // Auto-prepend "in " if parsing fails and text doesn't already start with "in "
-      const parsed = parseNaturalDate(trimmedText)
-      if (!parsed && !trimmedText.toLowerCase().startsWith('in ')) {
-        textToParse = `in ${trimmedText}`
-        // Update the state with the modified text
-        setNaturalDueDate(textToParse)
-        return // Exit early, this will trigger the effect again with the updated text
-      }
-      
-      const preview = describeNaturalDate(textToParse)
-      setDueDatePreview(preview)
-      const finalParsed = parseNaturalDate(textToParse)
-      if (finalParsed) {
-        setDueDate(finalParsed)
-      }
-    } else {
+    const trimmedText = naturalDueDate.trim()
+    if (!trimmedText) {
       setDueDatePreview(null)
+      return
+    }
+    
+    setDueDatePreview(describeNaturalDate(trimmedText))
+    const parsed = parseNaturalDate(trimmedText)
+    if (parsed) {
+      setDueDate(parsed)
     }
   }, [naturalDueDate])
 
   // Handle natural language defer date input
   useEffect(() => {
-    if (naturalDeferDate.trim()) {
-      const trimmedText = naturalDeferDate.trim()
-      let textToParse = trimmedText
-      
-      // Auto-prepend "in " if parsing fails and text doesn't already start with "in "
-      const parsed = parseNaturalDate(trimmedText)
-      if (!parsed && !trimmedText.toLowerCase().startsWith('in ')) {
-        textToParse = `in ${trimmedText}`
-        // Update the state with the modified text
-        setNaturalDeferDate(textToParse)
-        return // Exit early, this will trigger the effect again with the updated text
-      }
-      
-      const preview = describeNaturalDate(textToParse)
-      setDeferDatePreview(preview)
-      const finalParsed = parseNaturalDate(textToParse)
-      if (finalParsed) {
-        setDeferDate(finalParsed)
-      }
-    } else {
+    const trimmedText = naturalDeferDate.trim()
+    if (!trimmedText) {
       setDeferDatePreview(null)
+      return
+    }
+    
+    setDeferDatePreview(describeNaturalDate(trimmedText))
+    const parsed = parseNaturalDate(trimmedText)
+    if (parsed) {
+      setDeferDate(parsed)
     }
   }, [naturalDeferDate])
 
@@ -371,8 +380,9 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
     }
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+  const handleKeyDown = (e: React.KeyboardEvent, allowPlainEnter = false) => {
+    if (e.key === 'Enter' && (allowPlainEnter || e.metaKey || e.ctrlKey)) {
+      e.preventDefault()
       handleSave()
     } else if (e.key === 's' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault() // Prevent browser save dialog
@@ -432,7 +442,7 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          onKeyDown={handleKeyDown}
+          onKeyDown={(e) => handleKeyDown(e, true)}
           placeholder={isEditMode ? "Task name" : "Type task name and press Enter..."}
           autoFocus
         />
@@ -646,7 +656,7 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
       </div>
 
       <div className="editor-hint">
-        ⌘Enter to save • Esc to cancel
+        Enter or ⌘Enter to save • Esc to cancel
       </div>
     </div>
   )
