@@ -4,6 +4,8 @@ import type { ProjectDTO, ProjectStatus, TaskDTO, SyncState } from '../types'
 import { omnifocusService } from '../services/omnifocus'
 import { syncManager } from '../services/syncManager'
 import type { OmniFocusBridgeProject } from '../services/omnifocus-bridge'
+import { cleanupOrphanedAnswers } from './answersRepo'
+import { cleanupOrphanedCommitments } from './timelineCommitmentsRepo'
 
 // Guard to prevent concurrent syncs
 let isSyncing = false
@@ -157,6 +159,15 @@ export async function syncFromOmniFocus(): Promise<ProjectDTO[]> {
         }
         
         console.log('✅ Import completed successfully')
+        
+        // Clean up orphaned answers and commitments for projects that no longer exist
+        console.log('🧹 Cleaning up orphaned data...')
+        const validProjectIds = omnifocusProjects.map(p => p.id)
+        const orphanedAnswersRemoved = await cleanupOrphanedAnswers(validProjectIds)
+        const orphanedCommitmentsRemoved = await cleanupOrphanedCommitments(validProjectIds)
+        if (orphanedAnswersRemoved > 0 || orphanedCommitmentsRemoved > 0) {
+          console.log(`🧹 Cleanup complete: ${orphanedAnswersRemoved} orphaned answers, ${orphanedCommitmentsRemoved} orphaned commitments removed`)
+        }
         
         // Release import lock
         isImporting = false

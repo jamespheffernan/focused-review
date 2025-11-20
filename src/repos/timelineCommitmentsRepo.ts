@@ -1,5 +1,5 @@
 // repos/timelineCommitmentsRepo.ts
-import { db } from '../db'
+import { db, type ReviewDB } from '../db'
 import type { TimelineCommitmentDTO } from '../types'
 
 /**
@@ -87,5 +87,38 @@ export async function deleteCommitmentsForWeek(weekOf: string): Promise<number> 
   }
   
   return count
+}
+
+/**
+ * Remove orphaned commitments that reference projects that no longer exist
+ * @param validProjectIds - Array of project IDs that currently exist
+ * @param dbInstance - Optional database instance (for testing)
+ * @returns Number of orphaned commitments removed
+ */
+export async function cleanupOrphanedCommitments(
+  validProjectIds: string[],
+  dbInstance: ReviewDB = db
+): Promise<number> {
+  if (validProjectIds.length === 0) {
+    // If no valid projects, skip cleanup to avoid deleting everything
+    return 0
+  }
+  
+  const validProjectIdSet = new Set(validProjectIds)
+  const allCommitments = await dbInstance.timelineCommitments.toArray()
+  
+  let removedCount = 0
+  for (const commitment of allCommitments) {
+    if (!validProjectIdSet.has(commitment.projectId)) {
+      await dbInstance.timelineCommitments.delete(commitment.id)
+      removedCount++
+    }
+  }
+  
+  if (removedCount > 0) {
+    console.log(`🧹 Cleaned up ${removedCount} orphaned timeline commitments`)
+  }
+  
+  return removedCount
 }
 

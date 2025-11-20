@@ -1,5 +1,6 @@
 // repos/answersRepo.ts
-import { db } from '../db'; import type { AnswerDraft } from '../types'
+import { db, type ReviewDB } from '../db'
+import type { AnswerDraft } from '../types'
 
 export const latest = async (projectID: string, questionID: string) =>
   (await db.answers.where({projectID, questionID}).reverse().sortBy('weekOf'))[0]
@@ -131,4 +132,37 @@ export const deleteAnswersForWeek = async (weekOf: string): Promise<number> => {
   }
   
   return count
+}
+
+/**
+ * Remove orphaned answers that reference projects that no longer exist
+ * @param validProjectIds - Array of project IDs that currently exist
+ * @param dbInstance - Optional database instance (for testing)
+ * @returns Number of orphaned answers removed
+ */
+export const cleanupOrphanedAnswers = async (
+  validProjectIds: string[],
+  dbInstance: ReviewDB = db
+): Promise<number> => {
+  if (validProjectIds.length === 0) {
+    // If no valid projects, skip cleanup to avoid deleting everything
+    return 0
+  }
+  
+  const validProjectIdSet = new Set(validProjectIds)
+  const allAnswers = await dbInstance.answers.toArray()
+  
+  let removedCount = 0
+  for (const answer of allAnswers) {
+    if (!validProjectIdSet.has(answer.projectID)) {
+      await dbInstance.answers.delete(answer.id)
+      removedCount++
+    }
+  }
+  
+  if (removedCount > 0) {
+    console.log(`🧹 Cleaned up ${removedCount} orphaned answers`)
+  }
+  
+  return removedCount
 }

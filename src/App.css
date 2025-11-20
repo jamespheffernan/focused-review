@@ -739,6 +739,13 @@
   flex-wrap: wrap;
 }
 
+.task-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  align-items: center;
+}
+
 .context-tag,
 .due-date {
   background: rgba(255, 255, 255, var(--glass-opacity-medium));
@@ -749,6 +756,7 @@
   font-weight: var(--font-weight-medium);
   border: 1px solid rgba(255, 255, 255, var(--glass-border-subtle));
   transition: transform var(--transition-default), background var(--transition-default), border-color var(--transition-default);
+  white-space: nowrap;
 }
 
 .context-tag.clickable:hover,

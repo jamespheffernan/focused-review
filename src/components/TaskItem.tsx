@@ -45,6 +45,10 @@ export default function TaskItem({
 
   const dueInfo = formatDate(task.dueDate)
 
+  const taskTags = Array.isArray(task.tags) && task.tags.length > 0
+    ? task.tags
+    : (task.context ? [task.context] : [])
+
   // Simplified view: checkbox + task name + metadata
   return (
     <div className={`task-card ${task.completed ? 'completed' : ''} ${task.flagged ? 'flagged' : ''}`}>
@@ -66,20 +70,25 @@ export default function TaskItem({
           onClick={onEditToggle}
         >
           <div className="task-name">{task.name}</div>
-          {(task.context || task.dueDate) && (
+          {(taskTags.length > 0 || task.dueDate) && (
             <div className="task-meta">
-              {task.context && (
-                <span 
-                  className="context-tag clickable"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    alert(`Filter by context: ${task.context}`)
-                  }}
-                  title="Click to filter by context"
-                  style={{ cursor: 'pointer' }}
-                >
-                  🏷️ {task.context}
-                </span>
+              {taskTags.length > 0 && (
+                <div className="task-tags">
+                  {taskTags.map(tag => (
+                    <span 
+                      key={tag}
+                      className="context-tag clickable"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        alert(`Filter by tag: ${tag}`)
+                      }}
+                      title="Click to filter by tag"
+                      style={{ cursor: 'pointer' }}
+                    >
+                      🏷️ {tag}
+                    </span>
+                  ))}
+                </div>
               )}
               {dueInfo && (
                 <span 
