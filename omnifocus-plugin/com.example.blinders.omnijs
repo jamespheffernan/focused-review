@@ -1,0 +1,496 @@
+/*{
+    "type": "action",
+    "targets": ["omnifocus"],
+    "author": "Blinders",
+    "identifier": "com.example.blinders",
+    "version": "1.0.0",
+    "description": "Executes OmniFocus write operations triggered from the Blinders companion app",
+    "label": "Blinders Bridge",
+    "mediumLabel": "Blinders",
+    "paletteLabel": "Blinders Bridge",
+    "image": "gearshape.2"
+}*/
+(() => {
+  const PLUGIN_ID = 'com.example.blinders'
+
+  function log(...messages) {
+    console.log(`[${PLUGIN_ID}]`, ...messages)
+  }
+
+  function toISO(dateValue) {
+    try {
+      if (!dateValue) {
+        return null
+      }
+      const date = dateValue instanceof Date ? dateValue : new Date(dateValue)
+      return isNaN(date) ? null : date.toISOString()
+    } catch (error) {
+      return null
+    }
+  }
+
+  function requireString(value, fieldName) {
+    if (typeof value !== 'string' || value.trim() === '') {
+      throw new Error(`Missing or invalid ${fieldName}`)
+    }
+    return value.trim()
+  }
+
+  function parseDateInput(value, fieldName) {
+    if (value === undefined) {
+      return undefined
+    }
+    if (value === null || value === '') {
+      return null
+    }
+    const parsed = new Date(value)
+    if (isNaN(parsed)) {
+      throw new Error(`Invalid ${fieldName || 'date'}: ${value}`)
+    }
+    return parsed
+  }
+
+  function requireTask(taskId) {
+    const task = Task.byIdentifier(taskId)
+    if (!task) {
+      throw new Error(`Task not found: ${taskId}`)
+    }
+    return task
+  }
+
+  function requireProject(projectId) {
+    const project = Project.byIdentifier(projectId)
+    if (!project) {
+      throw new Error(`Project not found: ${projectId}`)
+    }
+    return project
+  }
+
+  function identifierValue(entity) {
+    if (!entity) {
+      return null
+    }
+    if (entity.id && entity.id.primaryKey) {
+      return entity.id.primaryKey
+    }
+    return entity.id || null
+  }
+
+  function serializeTag(tag) {
+    return {
+      id: identifierValue(tag),
+      name: tag.name
+    }
+  }
+
+  function serializeTask(task) {
+    return {
+      id: identifierValue(task),
+      name: task.name,
+      note: task.note,
+      flagged: task.flagged,
+      dueDate: toISO(task.dueDate),
+      deferDate: toISO(task.deferDate),
+      completed: task.completed,
+      completionDate: toISO(task.completionDate),
+      tags: (task.tags || []).map(serializeTag)
+    }
+  }
+
+  function serializeProject(project) {
+    return {
+      id: identifierValue(project),
+      name: project.name,
+      status: project.status,
+      flagged: project.flagged,
+      deferDate: toISO(project.deferDate),
+      dueDate: toISO(project.dueDate),
+      reviewInterval: project.reviewInterval,
+      lastReviewDate: toISO(project.lastReviewDate),
+      nextReviewDate: toISO(project.nextReviewDate),
+      containsSingletonActions: project.containsSingletonActions,
+      note: project.note || ''
+    }
+  }
+
+  let tagCache = null
+
+  function loadAllTags() {
+    if (tagCache) {
+      return tagCache
+    }
+    const collected = []
+    try {
+      if (document && typeof document.flattenedTags === 'function') {
+        const docTags = document.flattenedTags
+        if (typeof docTags === 'function') {
+          collected.push(...docTags())
+        } else if (Array.isArray(docTags)) {
+          collected.push(...docTags)
+        }
+      }
+    } catch (error) {
+      // Ignore
+    }
+    if (collected.length === 0) {
+      try {
+        const fallback = flattenedTags()
+        if (Array.isArray(fallback)) {
+          collected.push(...fallback)
+        }
+      } catch (error) {
+        // Ignore
+      }
+    }
+    tagCache = collected
+    return tagCache
+  }
+
+  function normalizeTagName(name) {
+    return typeof name === 'string' ? name.trim().toLowerCase() : ''
+  }
+
+  function findTagByName(tagName) {
+    const normalized = normalizeTagName(tagName)
+    if (!normalized) {
+      return null
+    }
+    const allTags = loadAllTags()
+    for (let i = 0; i < allTags.length; i++) {
+      const tag = allTags[i]
+      if (normalizeTagName(tag.name) === normalized) {
+        return tag
+      }
+    }
+    return null
+  }
+
+  function findTagByIdentifier(tagId) {
+    if (!tagId) {
+      return null
+    }
+    try {
+      return Tag.byIdentifier(tagId)
+    } catch (error) {
+      return null
+    }
+  }
+
+  function ensureTag(tagInput) {
+    if (!tagInput) {
+      return null
+    }
+    if (typeof tagInput === 'string') {
+      return findTagByName(tagInput)
+    }
+    if (typeof tagInput === 'object') {
+      if (tagInput.id) {
+        const byId = findTagByIdentifier(tagInput.id)
+        if (byId) {
+          return byId
+        }
+      }
+      if (tagInput.name) {
+        return findTagByName(tagInput.name)
+      }
+    }
+    return null
+  }
+
+  function replaceTaskTags(task, tagInputs) {
+    if (!Array.isArray(tagInputs)) {
+      return []
+    }
+    const newTags = []
+    tagInputs.forEach(input => {
+      const tag = ensureTag(input)
+      if (!tag) {
+        throw new Error(`Tag not found: ${typeof input === 'string' ? input : (input && input.name)}`)
+      }
+      newTags.push(tag)
+    })
+
+    // Remove all existing tags
+    if (task.tags && typeof task.removeTag === 'function') {
+      task.tags.slice().forEach(tag => {
+        try {
+          task.removeTag(tag)
+        } catch (error) {
+          // ignore removal errors
+        }
+      })
+    } else if (task.tags && Array.isArray(task.tags)) {
+      task.tags = []
+    }
+
+    newTags.forEach(tag => {
+      if (typeof task.addTag === 'function') {
+        task.addTag(tag)
+      } else if (task.tags && Array.isArray(task.tags)) {
+        task.tags.push(tag)
+      }
+    })
+
+    return newTags.map(serializeTag)
+  }
+
+  function setDateProperty(entity, fieldName, value) {
+    const parsed = parseDateInput(value, fieldName)
+    if (parsed === undefined) {
+      return
+    }
+    if (parsed === null) {
+      if (typeof entity[`clear${fieldName.charAt(0).toUpperCase() + fieldName.slice(1)}`] === 'function') {
+        entity[`clear${fieldName.charAt(0).toUpperCase() + fieldName.slice(1)}`]()
+      } else {
+        entity[fieldName] = null
+      }
+      return
+    }
+    entity[fieldName] = parsed
+  }
+
+  function updateTaskProperties(task, updates) {
+    if (!updates || typeof updates !== 'object') {
+      return {}
+    }
+
+    if (updates.name !== undefined) {
+      task.name = updates.name
+    }
+    if (updates.note !== undefined) {
+      task.note = updates.note || ''
+    }
+    if (updates.flagged !== undefined) {
+      task.flagged = Boolean(updates.flagged)
+    }
+    if ('dueDate' in updates) {
+      setDateProperty(task, 'dueDate', updates.dueDate)
+    }
+    if ('deferDate' in updates) {
+      setDateProperty(task, 'deferDate', updates.deferDate)
+    }
+    if (Array.isArray(updates.tags)) {
+      replaceTaskTags(task, updates.tags)
+    }
+    if (updates.completed === true && typeof task.markComplete === 'function') {
+      task.markComplete()
+    } else if (updates.completed === false && typeof task.markIncomplete === 'function') {
+      task.markIncomplete()
+    }
+    return serializeTask(task)
+  }
+
+  function applyProjectStatus(project, status) {
+    if (!status || typeof status !== 'string') {
+      return
+    }
+    const normalized = status.toLowerCase()
+    if (normalized === 'dropped') {
+      if (typeof project.markDropped === 'function') {
+        project.markDropped()
+      } else if (Project && Project.Status && Project.Status.Dropped) {
+        project.status = Project.Status.Dropped
+      } else {
+        project.status = 'dropped'
+      }
+      return
+    }
+    if (normalized === 'complete' || normalized === 'completed') {
+      if (typeof project.markComplete === 'function') {
+        project.markComplete()
+      } else if (Project && Project.Status && Project.Status.Done) {
+        project.status = Project.Status.Done
+      }
+      return
+    }
+    if (normalized === 'on_hold' || normalized === 'on hold') {
+      if (Project && Project.Status && Project.Status.OnHold) {
+        project.status = Project.Status.OnHold
+      } else {
+        project.status = 'on hold'
+      }
+      return
+    }
+    if (normalized === 'active') {
+      if (Project && Project.Status && Project.Status.Active) {
+        project.status = Project.Status.Active
+      } else {
+        project.status = 'active'
+      }
+    }
+  }
+
+  function updateProjectProperties(project, updates) {
+    if (!updates || typeof updates !== 'object') {
+      return {}
+    }
+    if (updates.name !== undefined) {
+      project.name = updates.name
+    }
+    if (updates.note !== undefined) {
+      project.note = updates.note || ''
+    }
+    if (updates.flagged !== undefined) {
+      project.flagged = Boolean(updates.flagged)
+    }
+    if ('dueDate' in updates) {
+      setDateProperty(project, 'dueDate', updates.dueDate)
+    }
+    if ('deferDate' in updates) {
+      setDateProperty(project, 'deferDate', updates.deferDate)
+    }
+    if ('lastReviewDate' in updates) {
+      setDateProperty(project, 'lastReviewDate', updates.lastReviewDate)
+    }
+    if ('nextReviewDate' in updates) {
+      setDateProperty(project, 'nextReviewDate', updates.nextReviewDate)
+    }
+    if (updates.reviewIntervalDays !== undefined) {
+      project.reviewInterval = Number(updates.reviewIntervalDays) || project.reviewInterval
+    }
+    if (updates.containsSingletonActions !== undefined) {
+      project.containsSingletonActions = Boolean(updates.containsSingletonActions)
+    }
+    if (updates.status) {
+      applyProjectStatus(project, updates.status)
+    }
+    return serializeProject(project)
+  }
+
+  function createTaskInProject(payload) {
+    const name = requireString(payload.name || (payload.updates && payload.updates.name), 'task name')
+    const note = payload.note || (payload.updates && payload.updates.note) || ''
+    const flagged = Boolean(payload.flagged || (payload.updates && payload.updates.flagged))
+    const projectId = payload.projectId
+    const updates = payload.updates || {}
+
+    let newTask
+    if (projectId) {
+      const project = requireProject(projectId)
+      newTask = new Task(name)
+      project.tasks.push(newTask)
+    } else {
+      const created = Task.byParsingTransportText(name)
+      if (Array.isArray(created) && created.length > 0) {
+        newTask = created[0]
+      } else if (created) {
+        newTask = created
+      }
+      if (!newTask) {
+        throw new Error('Failed to create inbox task')
+      }
+    }
+
+    if (note) {
+      newTask.note = note
+    }
+    if (flagged) {
+      newTask.flagged = true
+    }
+
+    updateTaskProperties(newTask, updates)
+
+    return serializeTask(newTask)
+  }
+
+  function createProject(payload) {
+    const name = requireString(payload.name || (payload.updates && payload.updates.name), 'project name')
+    const project = new Project(name)
+    updateProjectProperties(project, payload.updates || {})
+    return serializeProject(project)
+  }
+
+  function markProjectReviewed(project, payload) {
+    const timestamp = payload && payload.timestamp ? new Date(payload.timestamp) : new Date()
+    project.lastReviewDate = timestamp
+    if (project.reviewInterval && typeof project.reviewInterval === 'number') {
+      const next = new Date(timestamp.getTime() + project.reviewInterval * 24 * 60 * 60 * 1000)
+      project.nextReviewDate = next
+    }
+    return serializeProject(project)
+  }
+
+  function executeAction(payload) {
+    if (!payload || typeof payload !== 'object') {
+      throw new Error('Missing payload')
+    }
+
+    const actionName = payload.action
+    if (!actionName) {
+      throw new Error('Missing action name')
+    }
+
+    switch (actionName) {
+      case 'updateTask': {
+        const task = requireTask(requireString(payload.id, 'task id'))
+        return updateTaskProperties(task, payload.updates || payload)
+      }
+      case 'toggleTaskCompletion': {
+        const task = requireTask(requireString(payload.id, 'task id'))
+        if (payload.completed === true && typeof task.markComplete === 'function') {
+          task.markComplete()
+        } else if (payload.completed === false && typeof task.markIncomplete === 'function') {
+          task.markIncomplete()
+        }
+        return serializeTask(task)
+      }
+      case 'setTaskTags': {
+        const task = requireTask(requireString(payload.id, 'task id'))
+        replaceTaskTags(task, payload.tags || [])
+        return serializeTask(task)
+      }
+      case 'setTaskDueDate': {
+        const task = requireTask(requireString(payload.id, 'task id'))
+        setDateProperty(task, 'dueDate', payload.dueDate)
+        return serializeTask(task)
+      }
+      case 'createTask':
+        return createTaskInProject(payload)
+      case 'createInboxTask':
+        return createTaskInProject(Object.assign({}, payload, { projectId: null }))
+      case 'createProject':
+        return createProject(payload)
+      case 'updateProject': {
+        const project = requireProject(requireString(payload.id || payload.projectId, 'project id'))
+        return updateProjectProperties(project, payload.updates || payload)
+      }
+      case 'markProjectReviewed': {
+        const project = requireProject(requireString(payload.id || payload.projectId, 'project id'))
+        return markProjectReviewed(project, payload)
+      }
+      case 'markProjectComplete': {
+        const project = requireProject(requireString(payload.id || payload.projectId, 'project id'))
+        if (typeof project.markComplete === 'function') {
+          project.markComplete()
+        }
+        return serializeProject(project)
+      }
+      case 'dropProject': {
+        const project = requireProject(requireString(payload.id || payload.projectId, 'project id'))
+        applyProjectStatus(project, 'dropped')
+        return serializeProject(project)
+      }
+      default:
+        throw new Error(`Unsupported action: ${actionName}`)
+    }
+  }
+
+  const action = new PlugIn.Action(function(selection, sender) {
+    try {
+      const payload = sender && typeof sender === 'object' ? sender : selection
+      log('Received payload', JSON.stringify(payload))
+      const result = executeAction(payload)
+      return JSON.stringify({ success: true, action: payload.action, result })
+    } catch (error) {
+      console.error(`[${PLUGIN_ID}]`, error)
+      return JSON.stringify({ success: false, error: error.message || String(error) })
+    }
+  })
+
+  action.validate = function(selection, sender) {
+    return true
+  }
+
+  return action
+})()

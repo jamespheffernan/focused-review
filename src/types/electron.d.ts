@@ -4,6 +4,7 @@ export interface ElectronAPI {
   omnifocus: {
     getProjects: () => Promise<any[]>
     getProjectTasks: (projectId: string) => Promise<any[]>
+    getTags: () => Promise<Array<{id: string; name: string}>>
     getContexts: () => Promise<{ success: boolean; contexts: Array<{id: string; name: string}>; error?: string }>
     updateProject: (projectId: string, updates: any) => Promise<boolean>
     markProjectReviewed: (projectId: string) => Promise<{ success: boolean; projectId?: string; lastReviewDate?: string | null; nextReviewDate?: string | null; error?: string }>
@@ -12,9 +13,10 @@ export interface ElectronAPI {
     createTask: (projectId: string, taskName: string) => Promise<{ success: boolean; taskId?: string; taskName?: string; error?: string }>
     createInboxTask: (taskName: string) => Promise<{ success: boolean; taskId?: string; taskName?: string; error?: string }>
     setTaskContext: (taskId: string, contextName: string) => Promise<{ success: boolean; taskId?: string; contextName?: string; error?: string }>
+    setTaskTags: (taskId: string, tags: string[]) => Promise<{ success: boolean; taskId?: string; tags?: string[]; error?: string }>
     setTaskDueDate: (taskId: string, dueDate: string | null) => Promise<{ success: boolean; taskId?: string; dueDate?: string | null; error?: string }>
     toggleTaskCompletion: (taskId: string, isComplete: boolean) => Promise<{ success: boolean; taskId?: string; completed?: boolean; completionDate?: string | null; error?: string }>
-    updateTask: (taskId: string, updates: any) => Promise<{ success: boolean; taskId?: string; name?: string; note?: string; flagged?: boolean; dueDate?: string | null; context?: string | null; completed?: boolean; completionDate?: string | null; error?: string }>
+    updateTask: (taskId: string, updates: any) => Promise<{ success: boolean; taskId?: string; name?: string; note?: string; flagged?: boolean; dueDate?: string | null; tags?: string[]; context?: string | null; completed?: boolean; completionDate?: string | null; error?: string }>
     isRunning: () => Promise<boolean>
     launch: () => Promise<boolean>
     getDatabasePath: () => Promise<{ found: boolean; path?: string; files?: string[] }>

@@ -89,7 +89,8 @@ export async function createTask(projectId: string, task: Omit<TaskDTO, 'id' | '
       projectId, // Ensure projectId is set
       id: `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       lastModified: new Date().toISOString(),
-      syncState: 'queued' as SyncState
+      syncState: 'queued' as SyncState,
+      tags: task.tags || []
     }
     
     await db.tasks.add(newTask)
@@ -222,6 +223,7 @@ export async function importTasksFromOmniFocus(projectId: string, tasks: Omit<Ta
     // Add new tasks
     const newTasks: TaskDTO[] = tasks.map(task => ({
       ...task,
+      tags: task.tags || [],
       id: `of_${task.projectId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       lastModified: new Date().toISOString(),
       syncState: 'synced' as SyncState

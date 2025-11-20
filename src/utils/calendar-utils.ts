@@ -160,3 +160,15 @@ export function generateMonthMarkers(startDate: Date, endDate: Date): Array<{ la
   return markers
 }
 
+/**
+ * Get the start of the week (Monday) for a given date
+ */
+export function getWeekStartForDate(dateInput: string | Date): string {
+  const date = typeof dateInput === 'string' ? new Date(dateInput) : new Date(dateInput)
+  const day = date.getDay() // 0 (Sun) - 6 (Sat)
+  const diff = date.getDate() - day + (day === 0 ? -6 : 1) // Adjust so Monday is start
+  date.setDate(diff)
+  date.setHours(0, 0, 0, 0)
+  return date.toISOString().slice(0, 10)
+}
+

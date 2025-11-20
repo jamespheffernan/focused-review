@@ -8,7 +8,8 @@ export interface OmniFocusTask {
   status: 'available' | 'next' | 'blocked' | 'completed'
   dueDate?: string
   deferDate?: string
-  context?: string
+  tags: string[]
+  context?: string | null
   flagged: boolean
   note?: string
   completed: boolean
@@ -38,6 +39,43 @@ export interface BridgeStatus {
   omniFocusRunning?: boolean
 }
 
+const normalizeTagList = (input: unknown, fallback?: unknown): string[] => {
+  const tags: string[] = []
+  const seen = new Set<string>()
+
+  const pushTag = (value: unknown) => {
+    if (typeof value !== 'string') {
+      return
+    }
+    const trimmed = value.trim()
+    if (!trimmed) {
+      return
+    }
+    const key = trimmed.toLowerCase()
+    if (seen.has(key)) {
+      return
+    }
+    seen.add(key)
+    tags.push(trimmed)
+  }
+
+  if (Array.isArray(input)) {
+    input.forEach(pushTag)
+  } else {
+    pushTag(input)
+  }
+
+  if (tags.length === 0) {
+    if (Array.isArray(fallback)) {
+      fallback.forEach(pushTag)
+    } else {
+      pushTag(fallback)
+    }
+  }
+
+  return tags
+}
+
 class OmniFocusBridge {
   private isMacOS = false
   private isElectron = false
@@ -45,6 +83,42 @@ class OmniFocusBridge {
   constructor() {
     this.isMacOS = typeof navigator !== 'undefined' && navigator.platform.includes('Mac')
     this.isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined
+  }
+
+  /**
+   * Get the Electron API, checking for test stubs first
+   * This allows tests to inject stubs after modules load
+   * Since contextBridge creates read-only properties, we check for stubs stored separately
+   */
+  private getElectronAPI() {
+    console.log('[Bridge] getElectronAPI() called')
+    if (typeof window === 'undefined') {
+      return undefined
+    }
+    
+    // Check if test stubs exist (stored on window.__TEST_STUBS__)
+    // The test stores stubs there because contextBridge methods can't be replaced directly
+    const testStubs = (window as any).__TEST_STUBS__
+    console.log('[Bridge] Checking for test stubs:', { hasStubs: !!testStubs, hasStubsObject: !!(testStubs && testStubs.stubs), hasElectronAPI: !!window.electronAPI })
+    if (testStubs && testStubs.stubs && window.electronAPI) {
+      console.log('[Bridge] Using test stubs for Electron API')
+      // Return a wrapper that uses stubs if they exist, otherwise falls back to real API
+      const realAPI = window.electronAPI
+      return {
+        ...realAPI,
+        omnifocus: {
+          ...realAPI.omnifocus,
+          createTask: testStubs.stubs.createTask || realAPI.omnifocus.createTask,
+          setTaskTags: testStubs.stubs.setTaskTags || realAPI.omnifocus.setTaskTags,
+          setTaskDueDate: testStubs.stubs.setTaskDueDate || realAPI.omnifocus.setTaskDueDate,
+          updateTask: testStubs.stubs.updateTask || realAPI.omnifocus.updateTask,
+        }
+      }
+    } else {
+      console.log('[Bridge] No test stubs found, using real Electron API')
+    }
+    
+    return window.electronAPI
   }
 
   /**
@@ -111,21 +185,32 @@ class OmniFocusBridge {
   /**
    * Get all contexts/tags from OmniFocus
    */
-  async getContexts(): Promise<Array<{id: string; name: string}>> {
+  async getTags(): Promise<Array<{id: string; name: string}>> {
     const status = this.getIntegrationStatus()
     
-    if (status.method === 'electron' && window.electronAPI) {
+    const electronAPI = this.getElectronAPI()
+    if (status.method === 'electron' && electronAPI) {
       try {
-        const result = await window.electronAPI.omnifocus.getContexts()
-        if (result.success) {
-          return result.contexts
+        const result = await electronAPI.omnifocus.getTags()
+        if (Array.isArray(result)) {
+          return result
+        }
+        if (result && (result as any).success) {
+          return (result as any).contexts || []
         }
       } catch (error) {
-        console.error('Failed to fetch contexts:', error)
+        console.error('Failed to fetch tags:', error)
       }
     }
     
     return []
+  }
+
+  /**
+   * @deprecated Use getTags() instead
+   */
+  async getContexts(): Promise<Array<{id: string; name: string}>> {
+    return this.getTags()
   }
 
   /**
@@ -154,10 +239,11 @@ class OmniFocusBridge {
     
     switch (status.method) {
       case 'electron':
-        if (!window.electronAPI) {
+        const electronAPI = this.getElectronAPI()
+        if (!electronAPI) {
           return { success: false, error: 'Electron API not available' }
         }
-        return await window.electronAPI.omnifocus.markProjectReviewed(projectId)
+        return await electronAPI.omnifocus.markProjectReviewed(projectId)
       case 'applescript':
       case 'file-upload':
       default:
@@ -189,11 +275,12 @@ class OmniFocusBridge {
    */
   private async createTaskInElectron(projectId: string, taskName: string): Promise<{success: boolean; taskId?: string; error?: string}> {
     try {
-      if (!window.electronAPI) {
+      const electronAPI = this.getElectronAPI()
+      if (!electronAPI) {
         return {success: false, error: 'Electron API not available'}
       }
       
-      const result = await window.electronAPI.omnifocus.createTask(projectId, taskName)
+      const result = await electronAPI.omnifocus.createTask(projectId, taskName)
       return result
     } catch (error) {
       console.error('Electron create task failed:', error)
@@ -221,12 +308,13 @@ class OmniFocusBridge {
   /**
    * Set context on a task
    */
-  async setTaskContext(taskId: string, contextName: string): Promise<{success: boolean; error?: string}> {
+  async setTaskTags(taskId: string, tagNames: string[]): Promise<{success: boolean; error?: string}> {
     const status = this.getIntegrationStatus()
     
-    if (status.method === 'electron' && window.electronAPI) {
+    const electronAPI = this.getElectronAPI()
+    if (status.method === 'electron' && electronAPI) {
       try {
-        const result = await window.electronAPI.omnifocus.setTaskContext(taskId, contextName)
+        const result = await electronAPI.omnifocus.setTaskTags(taskId, tagNames)
         return {success: result.success, error: result.error}
       } catch (error) {
         return {success: false, error: error instanceof Error ? error.message : 'Unknown error'}
@@ -237,14 +325,23 @@ class OmniFocusBridge {
   }
 
   /**
+   * @deprecated Use setTaskTags() instead
+   */
+  async setTaskContext(taskId: string, contextName: string): Promise<{success: boolean; error?: string}> {
+    const tags = contextName ? [contextName] : []
+    return this.setTaskTags(taskId, tags)
+  }
+
+  /**
    * Set due date on a task
    */
   async setTaskDueDate(taskId: string, dueDate: string | null): Promise<{success: boolean; error?: string}> {
     const status = this.getIntegrationStatus()
     
-    if (status.method === 'electron' && window.electronAPI) {
+    const electronAPI = this.getElectronAPI()
+    if (status.method === 'electron' && electronAPI) {
       try {
-        const result = await window.electronAPI.omnifocus.setTaskDueDate(taskId, dueDate)
+        const result = await electronAPI.omnifocus.setTaskDueDate(taskId, dueDate)
         return {success: result.success, error: result.error}
       } catch (error) {
         return {success: false, error: error instanceof Error ? error.message : 'Unknown error'}
@@ -260,9 +357,10 @@ class OmniFocusBridge {
   async toggleTaskCompletion(taskId: string, isComplete: boolean): Promise<{success: boolean; error?: string}> {
     const status = this.getIntegrationStatus()
     
-    if (status.method === 'electron' && window.electronAPI) {
+    const electronAPI = this.getElectronAPI()
+    if (status.method === 'electron' && electronAPI) {
       try {
-        const result = await window.electronAPI.omnifocus.toggleTaskCompletion(taskId, isComplete)
+        const result = await electronAPI.omnifocus.toggleTaskCompletion(taskId, isComplete)
         return {success: result.success, error: result.error}
       } catch (error) {
         return {success: false, error: error instanceof Error ? error.message : 'Unknown error'}
@@ -278,9 +376,10 @@ class OmniFocusBridge {
   async updateTask(taskId: string, updates: any): Promise<{success: boolean; error?: string}> {
     const status = this.getIntegrationStatus()
     
-    if (status.method === 'electron' && window.electronAPI) {
+    const electronAPI = this.getElectronAPI()
+    if (status.method === 'electron' && electronAPI) {
       try {
-        const result = await window.electronAPI.omnifocus.updateTask(taskId, updates)
+        const result = await electronAPI.omnifocus.updateTask(taskId, updates)
         return {success: result.success, error: result.error}
       } catch (error) {
         return {success: false, error: error instanceof Error ? error.message : 'Unknown error'}
@@ -295,11 +394,12 @@ class OmniFocusBridge {
    */
   private async getProjectsFromElectron(): Promise<OmniFocusBridgeProject[]> {
     try {
-      if (!window.electronAPI) {
+      const electronAPI = this.getElectronAPI()
+      if (!electronAPI) {
         throw new Error('Electron API not available')
       }
       
-      const result = await window.electronAPI.omnifocus.getProjects()
+      const result = await electronAPI.omnifocus.getProjects()
       
       // Handle new response format with metadata
       const projects = Array.isArray(result) ? result : ((result as any).projects || [])
@@ -330,11 +430,24 @@ class OmniFocusBridge {
         reviewIntervalDays: project.reviewIntervalDays || 7,
         lastReviewed: project.lastReviewDate,
         nextReviewDate: project.nextReviewDate,
-        tags: project.tags || [],
+        tags: normalizeTagList(project.tags),
         flagged: Boolean(project.flagged),
         estimatedMinutes: project.estimatedMinutes,
         notes: project.note || '',
-        tasks: project.tasks || [] // CRITICAL: Preserve tasks from Electron
+        tasks: Array.isArray(project.tasks)
+          ? project.tasks.map((task: any) => ({
+              id: task.id,
+              name: task.name,
+              status: this.convertTaskStatus?.(task.status) ?? 'available',
+              dueDate: task.dueDate,
+              deferDate: task.deferDate,
+              tags: normalizeTagList(task.tags, task.context),
+              flagged: Boolean(task.flagged),
+              note: task.note || '',
+              completed: Boolean(task.completed),
+              completedDate: task.completedDate
+            }))
+          : []
       }))
       
       const totalTasks = convertedProjects.reduce((sum: number, p: any) => sum + (p.tasks?.length || 0), 0)
@@ -437,11 +550,12 @@ class OmniFocusBridge {
    */
   private async updateProjectInElectron(projectId: string, updates: Partial<OmniFocusBridgeProject>): Promise<boolean> {
     try {
-      if (!window.electronAPI) {
+      const electronAPI = this.getElectronAPI()
+      if (!electronAPI) {
         return false
       }
       
-      return await window.electronAPI.omnifocus.updateProject(projectId, updates)
+      return await electronAPI.omnifocus.updateProject(projectId, updates)
     } catch (error) {
       console.error('Electron update failed:', error)
       return false
@@ -486,9 +600,10 @@ class OmniFocusBridge {
    * Check if OmniFocus is running
    */
   async isOmniFocusRunning(): Promise<boolean> {
-    if (this.isElectron && window.electronAPI) {
+    const electronAPI = this.getElectronAPI()
+    if (this.isElectron && electronAPI) {
       try {
-        return await window.electronAPI.omnifocus.isRunning()
+        return await electronAPI.omnifocus.isRunning()
       } catch (error) {
         return false
       }
@@ -505,11 +620,12 @@ class OmniFocusBridge {
    */
   private async getProjectTasksFromElectron(projectId: string): Promise<OmniFocusTask[]> {
     try {
-      if (!window.electronAPI) {
+      const electronAPI = this.getElectronAPI()
+      if (!electronAPI) {
         throw new Error('Electron API not available')
       }
       
-      const tasks = await window.electronAPI.omnifocus.getProjectTasks(projectId)
+      const tasks = await electronAPI.omnifocus.getProjectTasks(projectId)
       
       // Convert Electron results to our format
       return tasks.map((task: any) => ({
@@ -517,7 +633,7 @@ class OmniFocusBridge {
         name: task.name,
         status: this.convertTaskStatus(task.status),
         dueDate: task.dueDate,
-        context: task.context,
+        tags: normalizeTagList(task.tags, task.context),
         flagged: Boolean(task.flagged),
         note: task.note || '',
         completed: Boolean(task.completed),
@@ -571,9 +687,10 @@ class OmniFocusBridge {
    * Launch OmniFocus
    */
   async launchOmniFocus(): Promise<boolean> {
-    if (this.isElectron && window.electronAPI) {
+    const electronAPI = this.getElectronAPI()
+    if (this.isElectron && electronAPI) {
       try {
-        return await window.electronAPI.omnifocus.launch()
+        return await electronAPI.omnifocus.launch()
       } catch (error) {
         return false
       }

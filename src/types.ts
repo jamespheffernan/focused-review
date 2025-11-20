@@ -1,5 +1,5 @@
 export type ProjectStatus = 'active'|'on_hold'|'dropped'
-export type QuestionType = 'text'|'slider'|'yes-no'|'text-parsed'
+export type QuestionType = 'text'|'slider'|'yes-no'|'text-parsed'|'instruction'
 export type FollowupLogic = 'always'|'never'|'if_yes'|'if_no'|'if_answered'|'if_empty'|'if_score_lte'|'if_score_gte'|'if_text_equals'|'if_text_contains'
 export type AnswerStatus = 'CarriedForward'|'Updated'|'New'
 export type SyncState = 'synced'|'queued'|'retrying'|'error'
@@ -21,6 +21,7 @@ export interface TaskDTO {
   dueDate?: string
   deferDate?: string
   context?: string
+  tags: string[]
   flagged: boolean
   note?: string
   completed: boolean

@@ -3,8 +3,250 @@ const path = require('path')
 const fs = require('fs').promises
 const { exec } = require('child_process')
 const { promisify } = require('util')
+const { triggerOmniFocusPlugin } = require('./omnifocus-plugin-trigger.cjs')
 
 const execAsync = promisify(exec)
+
+const sanitizeTagArray = (rawTags) => {
+  if (rawTags === undefined || rawTags === null) {
+    return []
+  }
+  const input = Array.isArray(rawTags) ? rawTags : [rawTags]
+  const seen = new Set()
+  const tags = []
+  for (const value of input) {
+    if (typeof value !== 'string') {
+      continue
+    }
+    const trimmed = value.trim()
+    if (!trimmed) {
+      continue
+    }
+    const key = trimmed.toLowerCase()
+    if (seen.has(key)) {
+      continue
+    }
+    seen.add(key)
+    tags.push(trimmed)
+  }
+  return tags
+}
+
+const normalizeTagLookup = (value) => (value || '').trim().replace(/[\s,]+$/g, '').toLowerCase()
+
+const levenshteinDistance = (a, b) => {
+  const m = a.length
+  const n = b.length
+  if (m === 0) return n
+  if (n === 0) return m
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0))
+  for (let i = 0; i <= m; i++) dp[i][0] = i
+  for (let j = 0; j <= n; j++) dp[0][j] = j
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,
+        dp[i][j - 1] + 1,
+        dp[i - 1][j - 1] + cost
+      )
+    }
+  }
+  return dp[m][n]
+}
+
+const bestTagMatch = (input, tags) => {
+  const needle = normalizeTagLookup(input)
+  if (!needle) return {}
+  const candidates = tags.map(tag => ({
+    ...tag,
+    lower: (tag.name || '').toLowerCase()
+  }))
+
+  const exact = candidates.find(t => t.lower === needle)
+  if (exact) return { tag: exact }
+
+  const starts = candidates.filter(t => t.lower.startsWith(needle))
+  if (starts.length === 1) return { tag: starts[0] }
+  if (starts.length > 1) return { ambiguous: true }
+
+  const includes = candidates.filter(t => t.lower.includes(needle))
+  if (includes.length === 1) return { tag: includes[0] }
+  if (includes.length > 1) return { ambiguous: true }
+
+  let best = null
+  let bestDist = Number.MAX_SAFE_INTEGER
+  for (const candidate of candidates) {
+    const dist = levenshteinDistance(needle, candidate.lower)
+    if (dist < bestDist) {
+      bestDist = dist
+      best = candidate
+    }
+  }
+  if (best && bestDist <= 2) {
+    return { tag: best }
+  }
+  return {}
+}
+
+const fetchAvailableTagList = async () => {
+  const tempJxaPath = path.join(require('os').tmpdir(), 'get_tags_jxa.js')
+  const jxaScript = `const of = Application('OmniFocus');
+const doc = of.defaultDocument;
+let tags = [];
+try { tags = doc.flattenedTags(); } catch (e) { try { tags = doc.flattenedContexts(); } catch (e2) {} }
+const result = [];
+for (let i = 0; i < tags.length; i++) {
+  try {
+    result.push({ id: tags[i].id(), name: tags[i].name() });
+  } catch (err) {}
+}
+JSON.stringify(result);`
+
+  await fs.writeFile(tempJxaPath, jxaScript)
+  const { stdout } = await execAsync(`osascript -l JavaScript "${tempJxaPath}"`)
+  try {
+    await fs.unlink(tempJxaPath)
+  } catch (cleanupError) {
+    console.warn('Failed to remove temporary tag script:', cleanupError.message)
+  }
+  try {
+    const parsed = JSON.parse(stdout || '[]')
+    return Array.isArray(parsed) ? parsed : []
+  } catch (parseError) {
+    console.error('Failed to parse tag list JSON:', parseError)
+    return []
+  }
+}
+
+const toTagNameList = (tags) => {
+  if (!Array.isArray(tags)) {
+    return []
+  }
+  return tags
+    .map(tag => {
+      if (!tag) return undefined
+      if (typeof tag === 'string') return tag
+      if (typeof tag === 'object') return tag.name
+      return undefined
+    })
+    .filter(Boolean)
+}
+
+const applyTagsToTask = async (taskId, tagNames) => {
+  const result = await invokePluginAction('setTaskTags', {
+    id: taskId,
+    tags: Array.isArray(tagNames) ? tagNames : []
+  })
+  return result?.tags?.map(tag => tag.name) ?? toTagNameList(tagNames)
+}
+
+const resolveTagNamesWithFuzzyMatching = async (rawTags) => {
+  const desiredTags = sanitizeTagArray(rawTags)
+  if (desiredTags.length === 0) {
+    return []
+  }
+
+  const availableTags = await fetchAvailableTagList()
+  if (!availableTags || availableTags.length === 0) {
+    throw new Error('No tags found in OmniFocus')
+  }
+
+  const resolvedTags = []
+  for (const tagName of desiredTags) {
+    const { tag, ambiguous } = bestTagMatch(tagName, availableTags)
+    if (ambiguous) {
+      throw new Error(`Tag "${tagName}" matches multiple tags. Please be more specific.`)
+    }
+    if (!tag) {
+      throw new Error(`Tag "${tagName}" was not found in OmniFocus.`)
+    }
+    resolvedTags.push(tag)
+  }
+  return resolvedTags
+}
+
+const setTaskTagsWithFuzzyMatching = async (taskId, rawTags, options = {}) => {
+  const { apply = true } = options
+  const resolvedTags = await resolveTagNamesWithFuzzyMatching(rawTags)
+  if (apply) {
+    return applyTagsToTask(taskId, resolvedTags)
+  }
+  return resolvedTags
+}
+
+const ensureOmniFocusRunning = async () => {
+  const checkScript = `tell application "System Events" to return (name of processes) contains "OmniFocus"`
+  try {
+    const { stdout } = await execAsync(`osascript -e '${checkScript}'`)
+    return stdout.trim().toLowerCase().includes('true')
+  } catch (error) {
+    console.error('[OmniFocus] Failed to check running state:', error)
+    return false
+  }
+}
+
+const OMNIFOCUS_NOT_RUNNING_ERROR = 'OmniFocus is not running. Please start OmniFocus and try again.'
+
+const invokePluginAction = async (action, args = {}) => {
+    const isRunning = await ensureOmniFocusRunning()
+    if (!isRunning) {
+    throw new Error(OMNIFOCUS_NOT_RUNNING_ERROR)
+  }
+  const response = await triggerOmniFocusPlugin({ action, ...args })
+  if (!response) {
+    throw new Error(`No response from OmniFocus plugin (action: ${action})`)
+  }
+  if (response.success === false) {
+    throw new Error(response.error || `OmniFocus plugin action "${action}" failed`)
+  }
+  return response.result ?? response
+}
+
+const handleSetTaskTags = async (taskId, tags) => {
+  try {
+    console.log(`[OmniFocus] set-task-tags called for task ${taskId} with tags`, tags)
+    const resolvedTags = await setTaskTagsWithFuzzyMatching(taskId, tags)
+    console.log('[OmniFocus] Tags set successfully:', resolvedTags)
+    return { success: true, taskId, tags: toTagNameList(resolvedTags) }
+  } catch (error) {
+    console.error('Error setting task tags:', error)
+    return { success: false, error: error instanceof Error ? error.message : String(error) }
+  }
+}
+
+const formatTaskResult = (result) => {
+  if (!result || typeof result !== 'object') {
+    return result
+  }
+  const formatted = { ...result }
+  if (formatted.tags) {
+    formatted.tags = toTagNameList(formatted.tags)
+  }
+  return formatted
+}
+
+const getTagsResponse = async () => {
+  try {
+    const isRunning = await ensureOmniFocusRunning()
+    if (!isRunning) {
+      return { success: false, error: 'OmniFocus is not running. Please start OmniFocus and try again.', contexts: [] }
+    }
+    const tags = await fetchAvailableTagList()
+    tags.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+    return { success: true, contexts: tags }
+  } catch (error) {
+    console.error('Error fetching tags:', error)
+    return { success: false, error: error instanceof Error ? error.message : String(error), contexts: [] }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// IPC HANDLERS
+// ---------------------------------------------------------------------------
+
+ipcMain.handle('omnifocus:get-tags', async () => getTagsResponse())
+ipcMain.handle('omnifocus:get-contexts', async () => getTagsResponse())
 
 // Load environment variables from shell config if not already set
 // This ensures Notion sync works even when app is launched from Finder
@@ -50,6 +292,15 @@ async function loadEnvVarsFromShell() {
 
 // Load env vars before app is ready
 loadEnvVarsFromShell()
+
+// Enable remote debugging for MCP server integration
+// This allows Chrome DevTools Protocol (CDP) access for automated testing
+// Port 9222 is the standard CDP port
+// Note: In production, consider gating this behind an environment variable or build flag
+if (!app.isPackaged || process.env.ENABLE_REMOTE_DEBUGGING === 'true') {
+  app.commandLine.appendSwitch('remote-debugging-port', '9222')
+  console.log('🔧 Remote debugging enabled on port 9222 (for MCP server integration)')
+}
 
 // Persistent JXA script path (app user data directory)
 const JXA_SCRIPT_PATH = path.join(app.getPath('userData'), 'omnifocus-sync.js')
@@ -145,7 +396,7 @@ for (let i = 0; i < flattenedProjects.length; i++) {
           status: 'available',
           dueDate: null,
           deferDate: null,
-          context: null,
+          tags: [],
           flagged: task.flagged(),
           note: task.note() || '',
           completed: task.completed(),
@@ -176,18 +427,24 @@ for (let i = 0; i < flattenedProjects.length; i++) {
         try {
           const tags = task.tags();
           if (tags && tags.length > 0) {
-            // Get the first tag as the context
-            const firstTag = tags[0];
-            const tagName = firstTag.name();
-            if (tagName) {
-              taskObj.context = tagName;
-              console.log('DEBUG: Task "' + task.name() + '" has tag/context: ' + tagName);
+            const tagNames = [];
+            for (let k = 0; k < tags.length; k++) {
+              try {
+                const tagName = tags[k].name();
+                if (tagName) {
+                  tagNames.push(tagName);
+                }
+              } catch (innerError) {}
             }
+            taskObj.tags = tagNames;
+            console.log('DEBUG: Task "' + task.name() + '" has tags: ' + tagNames.join(', '));
           } else {
             console.log('DEBUG: Task "' + task.name() + '" has no tags');
+            taskObj.tags = [];
           }
         } catch (e) { 
           console.log('DEBUG: Error getting tags for task ' + task.name() + ': ' + e.message);
+          taskObj.tags = [];
         }
         
         if (taskObj.name) {
@@ -411,13 +668,27 @@ const taskData = [];
 for (let j = 0; j < tasks.length; j++) {
   const task = tasks[j];
   try {
+    const tagNames = [];
+    try {
+      const tags = task.tags();
+      if (tags) {
+        for (let k = 0; k < tags.length; k++) {
+          try {
+            const tagName = tags[k].name();
+            if (tagName) {
+              tagNames.push(tagName);
+            }
+          } catch (innerError) {}
+        }
+      }
+    } catch (tagError) {}
     taskData.push({
       id: task.id(),
       name: task.name(),
       status: task.status(),
       dueDate: task.dueDate() ? task.dueDate().toISOString() : null,
       deferDate: task.deferDate() ? task.deferDate().toISOString() : null,
-      context: task.primaryTag() ? task.primaryTag().name() : null,
+      tags: tagNames,
       flagged: task.flagged(),
       note: task.note() || '',
       completed: task.completed(),
@@ -468,78 +739,14 @@ JSON.stringify(taskData);`
 
 ipcMain.handle('omnifocus:update-project', async (event, projectId, updates) => {
   try {
-    // Build JXA script dynamically based on updates
-    const tempJxaPath = path.join(require('os').tmpdir(), 'update_project_jxa.js')
-    
-    let updateLogic = ''
-    
-    if (updates.name) {
-      updateLogic += `targetProject.name = '${updates.name.replace(/'/g, "\\'")}';\n`
-    }
-    
-    if (updates.status) {
-      // Use proper API methods for status changes
-      if (updates.status === 'dropped') {
-        updateLogic += `targetProject.markDropped();\n`
-      } else if (updates.status === 'on_hold') {
-        // Note: There may not be a markOnHold() method, so we might need to keep property assignment for this
-        updateLogic += `// Note: Setting on hold status - verify if method exists\ntargetProject.status = of.Project.Status.OnHold;\n`
-      } else if (updates.status === 'active') {
-        // Reactivate by clearing dropped/on-hold status
-        updateLogic += `// Note: Reactivating project\ntargetProject.status = of.Project.Status.Active;\n`
-      }
-    }
-    
-    if (updates.flagged !== undefined) {
-      updateLogic += `targetProject.flagged = ${updates.flagged};\n`
-    }
-    
-    if (updates.estimatedMinutes) {
-      updateLogic += `targetProject.estimatedMinutes = ${updates.estimatedMinutes};\n`
-    }
-    
-    if (updates.notes) {
-      updateLogic += `targetProject.note = '${updates.notes.replace(/'/g, "\\'")}';\n`
-    }
-    
-    const jxaScript = `const of = Application('OmniFocus');
-const doc = of.defaultDocument;
-const projects = doc.flattenedProjects();
-let targetProject = null;
-
-for (let i = 0; i < projects.length; i++) {
-  if (projects[i].id() === '${projectId}') {
-    targetProject = projects[i];
-    break;
-  }
-}
-
-if (!targetProject) {
-  throw new Error('Project not found');
-}
-
-${updateLogic}
-
-JSON.stringify({ success: true });`
-    
-    await fs.writeFile(tempJxaPath, jxaScript)
-    const { stdout, stderr } = await execAsync(`osascript -l JavaScript "${tempJxaPath}"`)
-    
-    // Clean up
-    try {
-      await fs.unlink(tempJxaPath)
-    } catch (cleanupError) {
-      console.warn('Failed to clean up temporary JXA file:', cleanupError.message)
-    }
-    
-    if (stderr) {
-      console.error('JXA stderr:', stderr)
-      return false
-    }
-    
+    const result = await invokePluginAction('updateProject', {
+      id: projectId,
+      updates: updates || {}
+    })
+    console.log('Project updated via plugin:', result)
     return true
   } catch (error) {
-    console.error('JXA update error:', error)
+    console.error('Plugin project update error:', error)
     return false
   }
 })
@@ -547,68 +754,14 @@ JSON.stringify({ success: true });`
 ipcMain.handle('omnifocus:mark-project-complete', async (event, projectId) => {
   try {
     console.log(`Marking project ${projectId} as complete`)
-    
-    // First check if OmniFocus is running
-    const checkScript = `tell application "System Events" to return (name of processes) contains "OmniFocus"`
-    const { stdout: isRunningOutput } = await execAsync(`osascript -e '${checkScript}'`)
-    
-    if (!isRunningOutput.trim().toLowerCase().includes('true')) {
-      return { success: false, error: 'OmniFocus is not running. Please start OmniFocus and try again.' }
-    }
-    
-    // Create temporary JXA script for marking project as complete
-    const tempJxaPath = path.join(require('os').tmpdir(), 'mark_project_complete_jxa.js')
-    const jxaScript = `const of = Application('OmniFocus');
-const doc = of.defaultDocument;
-
-// Find the project by ID
-const projects = doc.flattenedProjects();
-let targetProject = null;
-
-for (let i = 0; i < projects.length; i++) {
-  if (projects[i].id() === '${projectId}') {
-    targetProject = projects[i];
-    break;
-  }
-}
-
-if (!targetProject) {
-  throw new Error('Project not found');
-}
-
-// Mark project as complete using the proper API method
-targetProject.markComplete();
-
-// Return success
-JSON.stringify({
+    const result = await invokePluginAction('markProjectComplete', { id: projectId })
+    return {
   success: true,
-  projectId: targetProject.id(),
-  completed: targetProject.completed()
-});`
-    
-    // Write the JXA script to temporary file
-    await fs.writeFile(tempJxaPath, jxaScript)
-    
-    // Execute the JXA script
-    const { stdout: resultOutput, stderr } = await execAsync(`osascript -l JavaScript "${tempJxaPath}"`)
-    
-    // Clean up temporary file
-    try {
-      await fs.unlink(tempJxaPath)
-    } catch (cleanupError) {
-      console.warn('Failed to clean up temporary JXA file:', cleanupError.message)
+      projectId,
+      completed: result?.completed ?? true
     }
-    
-    if (stderr) {
-      console.error('JXA stderr:', stderr)
-      return { success: false, error: stderr }
-    }
-    
-    console.log('✅ Project marked as complete:', resultOutput)
-    const result = JSON.parse(resultOutput)
-    return result
   } catch (error) {
-    console.error('Error marking project as complete:', error)
+    console.error('Error marking project as complete via plugin:', error)
     return { success: false, error: error.message }
   }
 })
@@ -616,74 +769,15 @@ JSON.stringify({
 ipcMain.handle('omnifocus:drop-project', async (event, projectId) => {
   try {
     console.log(`Dropping project ${projectId}`)
-    
-    // First check if OmniFocus is running
-    const checkScript = `tell application "System Events" to return (name of processes) contains "OmniFocus"`
-    const { stdout: isRunningOutput } = await execAsync(`osascript -e '${checkScript}'`)
-    
-    if (!isRunningOutput.trim().toLowerCase().includes('true')) {
-      return { success: false, error: 'OmniFocus is not running. Please start OmniFocus and try again.' }
-    }
-    
-    // Create temporary JXA script for dropping project
-    const tempJxaPath = path.join(require('os').tmpdir(), 'drop_project_jxa.js')
-    const jxaScript = `const of = Application('OmniFocus');
-const doc = of.defaultDocument;
-
-// Find the project by ID
-const projects = doc.flattenedProjects();
-let targetProject = null;
-
-for (let i = 0; i < projects.length; i++) {
-  if (projects[i].id() === '${projectId}') {
-    targetProject = projects[i];
-    break;
-  }
-}
-
-if (!targetProject) {
-  throw new Error('Project not found');
-}
-
-// Drop the project using the proper API method
-// In OmniFocus 4, use markDropped() method instead of setting status property
-try {
-  targetProject.markDropped();
-} catch (e) {
-  // If markDropped doesn't exist, try the property (for older versions)
-  targetProject.status = of.ProjectStatus.dropped;
-}
-
-// Return success
-JSON.stringify({
+    const result = await invokePluginAction('dropProject', { id: projectId })
+    return {
   success: true,
-  projectId: targetProject.id(),
-  status: 'dropped'
-});`
-    
-    // Write the JXA script to temporary file
-    await fs.writeFile(tempJxaPath, jxaScript)
-    
-    // Execute the JXA script
-    const { stdout: resultOutput, stderr } = await execAsync(`osascript -l JavaScript "${tempJxaPath}"`)
-    
-    // Clean up temporary file
-    try {
-      await fs.unlink(tempJxaPath)
-    } catch (cleanupError) {
-      console.warn('Failed to clean up temporary JXA file:', cleanupError.message)
+      projectId,
+      status: 'dropped',
+      ...result
     }
-    
-    if (stderr) {
-      console.error('JXA stderr:', stderr)
-      return { success: false, error: stderr }
-    }
-    
-    console.log('✅ Project dropped:', resultOutput)
-    const result = JSON.parse(resultOutput)
-    return result
   } catch (error) {
-    console.error('Error dropping project:', error)
+    console.error('Error dropping project via plugin:', error)
     return { success: false, error: error.message }
   }
 })
@@ -691,81 +785,19 @@ JSON.stringify({
 ipcMain.handle('omnifocus:mark-project-reviewed', async (event, projectId) => {
   try {
     console.log(`Marking project ${projectId} as reviewed`)
-    
-    // First check if OmniFocus is running
-    const checkScript = `tell application "System Events" to return (name of processes) contains "OmniFocus"`
-    const { stdout: isRunningOutput } = await execAsync(`osascript -e '${checkScript}'`)
-    
-    if (!isRunningOutput.trim().toLowerCase().includes('true')) {
-      return { success: false, error: 'OmniFocus is not running. Please start OmniFocus and try again.' }
-    }
-    
-    // Create temporary JXA script for marking project as reviewed
-    const tempJxaPath = path.join(require('os').tmpdir(), 'mark_project_reviewed_jxa.js')
-    const jxaScript = `const of = Application('OmniFocus');
-const doc = of.defaultDocument;
-
-// Find the project by ID
-const projects = doc.flattenedProjects();
-let targetProject = null;
-
-for (let i = 0; i < projects.length; i++) {
-  if (projects[i].id() === '${projectId}') {
-    targetProject = projects[i];
-    break;
-  }
-}
-
-if (!targetProject) {
-  throw new Error('Project not found');
-}
-
-// Mark as reviewed by setting lastReviewDate directly
-// Note: markReviewed() method throws "Can't convert types" error in OF4
-targetProject.lastReviewDate = new Date();
-
-// Return success with updated dates
-JSON.stringify({
+    const pluginResult = await invokePluginAction('markProjectReviewed', {
+      id: projectId,
+      timestamp: new Date().toISOString(),
+    })
+    console.log('Project review updated via plugin:', pluginResult)
+    return {
   success: true,
-  projectId: targetProject.id(),
-  lastReviewDate: targetProject.lastReviewDate() ? targetProject.lastReviewDate().toISOString() : null,
-  nextReviewDate: targetProject.nextReviewDate() ? targetProject.nextReviewDate().toISOString() : null
-});`
-    
-    // Write the JXA script to temporary file
-    await fs.writeFile(tempJxaPath, jxaScript)
-    
-    // Execute the JXA script
-    const { stdout: resultOutput, stderr } = await execAsync(`osascript -l JavaScript "${tempJxaPath}"`)
-    
-    // Clean up temporary file
-    try {
-      await fs.unlink(tempJxaPath)
-    } catch (cleanupError) {
-      console.warn('Failed to clean up temporary JXA file:', cleanupError.message)
+      projectId,
+      lastReviewDate: pluginResult?.lastReviewDate ?? new Date().toISOString(),
+      nextReviewDate: pluginResult?.nextReviewDate ?? null,
     }
-    
-    if (stderr) {
-      console.error('JXA stderr:', stderr)
-      return { success: false, error: stderr }
-    }
-    
-    if (!resultOutput || resultOutput.trim() === '') {
-      return { success: false, error: 'No output from JXA script' }
-    }
-    
-    // Parse the JSON result
-    try {
-      const result = JSON.parse(resultOutput.trim())
-      console.log('Project marked as reviewed:', result)
-      return result
-    } catch (parseError) {
-      console.error('Failed to parse JXA output:', parseError)
-      return { success: false, error: 'Failed to parse result' }
-    }
-    
   } catch (error) {
-    console.error('Error marking project as reviewed:', error)
+    console.error('Error marking project reviewed via plugin:', error)
     return { success: false, error: error.message }
   }
 })
@@ -801,181 +833,30 @@ ipcMain.handle('omnifocus:launch', async () => {
   }
 })
 
-// IPC handler for setting context on a task
+// IPC handler for setting tags on a task
+ipcMain.handle('omnifocus:set-task-tags', async (event, taskId, tags) => {
+  return handleSetTaskTags(taskId, tags)
+})
+
+// Backward compatibility handler for legacy context API
 ipcMain.handle('omnifocus:set-task-context', async (event, taskId, contextName) => {
-  try {
-    console.log(`[OmniFocus] set-task-context called for task ${taskId} with context "${contextName}"`)
-    
-    // First check if OmniFocus is running
-    const checkScript = `tell application "System Events" to return (name of processes) contains "OmniFocus"`
-    const { stdout: isRunningOutput } = await execAsync(`osascript -e '${checkScript}'`)
-    
-    if (!isRunningOutput.trim().toLowerCase().includes('true')) {
-      return { success: false, error: 'OmniFocus is not running. Please start OmniFocus and try again.' }
-    }
-    
-    // OPTIMIZATION: Skip JXA entirely for context/tag setting - OmniFocus 4 JXA can't handle them
-    // Go directly to AppleScript for better performance
-    console.log('[OmniFocus] Using direct AppleScript for context setting (JXA not supported in OmniFocus 4)')
-    
-    try {
-      const appleScript = `tell application "OmniFocus"
-  tell default document
-    set theTask to first flattened task whose id is "${taskId}"
-    set theTag to first flattened tag whose name is "${contextName.replace(/'/g, "\\'")}"
-    set primary tag of theTask to theTag
-  end tell
-end tell`
-      
-      console.log('[OmniFocus] Setting context to:', contextName)
-      await execAsync(`osascript -e '${appleScript.replace(/'/g, "'\\''")}'`)
-      console.log('Context set via AppleScript')
-      return { success: true, taskId, contextName }
-    } catch (asError) {
-      console.error('AppleScript context setting failed:', asError)
-      return { success: false, error: `AppleScript failed: ${asError.message}` }
-    }
-    
-  } catch (error) {
-    console.error('Error setting task context:', error)
-    return { success: false, error: error.message }
-  }
+  return handleSetTaskTags(taskId, contextName ? [contextName] : [])
 })
 
 // IPC handler for setting due date on a task
 ipcMain.handle('omnifocus:set-task-due-date', async (event, taskId, dueDate) => {
   try {
     console.log(`Setting due date "${dueDate}" on task ${taskId}`)
-    
-    // First check if OmniFocus is running
-    const checkScript = `tell application "System Events" to return (name of processes) contains "OmniFocus"`
-    const { stdout: isRunningOutput, stderr: checkStderr } = await execAsync(`osascript -e '${checkScript}'`)
-    
-    if (checkStderr) {
-      console.error('[OmniFocus] Error checking if OmniFocus is running:', checkStderr)
-    }
-    
-    if (!isRunningOutput.trim().toLowerCase().includes('true')) {
-      return { success: false, error: 'OmniFocus is not running. Please start OmniFocus and try again.' }
-    }
-    
-    // Use JXA with proper OmniFocus 4 API methods (setDueDate/clearDueDate)
-    console.log('[OmniFocus] Using JXA with setDueDate/clearDueDate methods for OmniFocus 4')
-    
-    // Create temporary JXA script
-    const tempJxaPath = path.join(require('os').tmpdir(), 'set_task_due_date_jxa.js')
-    
-    // Format date for JXA Date constructor
-    let jxaScript
-    if (dueDate) {
-      const dateObj = new Date(dueDate)
-      // Use milliseconds since epoch - more reliable in JXA
-      const milliseconds = dateObj.getTime()
-      console.log('[OmniFocus] Setting due date:', dateObj.toISOString(), `(${milliseconds} ms)`)
-      
-      jxaScript = `const of = Application('OmniFocus');
-const doc = of.defaultDocument;
-
-// Find the task by ID
-const tasks = doc.flattenedTasks();
-let targetTask = null;
-
-for (let i = 0; i < tasks.length; i++) {
-  if (tasks[i].id() === '${taskId}') {
-    targetTask = tasks[i];
-    break;
-  }
-}
-
-if (!targetTask) {
-  throw new Error('Task not found with ID: ${taskId}');
-}
-
-// Set due date using direct property assignment
-// Note: setDueDate() method throws "Can't convert types" error in OF4 JXA
-// Use direct property assignment instead (similar to lastReviewDate)
-const dueDateObj = new Date(${milliseconds});
-targetTask.dueDate = dueDateObj;
-
-// Return success with updated due date
-JSON.stringify({
-  success: true,
-  taskId: targetTask.id(),
-  dueDate: targetTask.dueDate() ? targetTask.dueDate().toISOString() : null
-});`
-    } else {
-      console.log('[OmniFocus] Clearing due date')
-      
-      jxaScript = `const of = Application('OmniFocus');
-const doc = of.defaultDocument;
-
-// Find the task by ID
-const tasks = doc.flattenedTasks();
-let targetTask = null;
-
-for (let i = 0; i < tasks.length; i++) {
-  if (tasks[i].id() === '${taskId}') {
-    targetTask = tasks[i];
-    break;
-  }
-}
-
-if (!targetTask) {
-  throw new Error('Task not found with ID: ${taskId}');
-}
-
-// Clear due date using direct property assignment
-// Note: clearDueDate() method may throw "Can't convert types" error in OF4 JXA
-// Use direct property assignment instead
-targetTask.dueDate = null;
-
-// Return success
-JSON.stringify({
-  success: true,
-  taskId: targetTask.id(),
-  dueDate: null
-});`
-    }
-    
-    // Write the JXA script to temporary file
-    await fs.writeFile(tempJxaPath, jxaScript)
-    
-    // Execute the JXA script and capture both stdout and stderr
-    const { stdout: resultOutput, stderr } = await execAsync(`osascript -l JavaScript "${tempJxaPath}"`)
-    
-    // Clean up temporary file
-    try {
-      await fs.unlink(tempJxaPath)
-    } catch (cleanupError) {
-      console.warn('Failed to clean up temporary JXA file:', cleanupError.message)
-    }
-    
-    // Check for errors in stderr
-    if (stderr) {
-      console.error('[OmniFocus] JXA stderr when setting due date:', stderr)
-      return { success: false, error: `Failed to set due date: ${stderr}` }
-    }
-    
-    // Parse the JSON result
-    if (!resultOutput || resultOutput.trim() === '') {
-      return { success: false, error: 'No output from JXA script' }
-    }
-    
-    try {
-      const result = JSON.parse(resultOutput.trim())
-      console.log('[OmniFocus] Due date operation successful:', result)
-      return { success: true, taskId: result.taskId, dueDate: result.dueDate }
-    } catch (parseError) {
-      console.error('[OmniFocus] Failed to parse JXA output:', parseError)
-      console.error('[OmniFocus] Raw output:', resultOutput)
-      return { success: false, error: `Failed to parse result: ${parseError.message}` }
-    }
-    
+    const pluginResult = await invokePluginAction('setTaskDueDate', {
+      id: taskId,
+      dueDate: dueDate || null
+    })
+    const normalizedDueDate = pluginResult?.dueDate ?? (dueDate || null)
+    console.log('[OmniFocus] Due date operation successful via plugin:', normalizedDueDate)
+    return { success: true, taskId, dueDate: normalizedDueDate }
   } catch (error) {
-    console.error('Error setting task due date:', error)
-    // Include stderr if available
-    const errorMessage = error.stderr ? `${error.message}\nstderr: ${error.stderr}` : error.message
-    return { success: false, error: errorMessage }
+    console.error('Error setting task due date via plugin:', error)
+    return { success: false, error: error.message }
   }
 })
 
@@ -983,84 +864,20 @@ JSON.stringify({
 ipcMain.handle('omnifocus:toggle-task-completion', async (event, taskId, isComplete) => {
   try {
     console.log(`Setting task ${taskId} completion to ${isComplete}`)
-    
-    // First check if OmniFocus is running
-    const checkScript = `tell application "System Events" to return (name of processes) contains "OmniFocus"`
-    const { stdout: isRunningOutput } = await execAsync(`osascript -e '${checkScript}'`)
-    
-    if (!isRunningOutput.trim().toLowerCase().includes('true')) {
-      return { success: false, error: 'OmniFocus is not running. Please start OmniFocus and try again.' }
-    }
-    
-    // Create temporary JXA script for toggling completion
-    const tempJxaPath = path.join(require('os').tmpdir(), 'toggle_task_completion_jxa.js')
-    const jxaScript = `const of = Application('OmniFocus');
-const doc = of.defaultDocument;
-
-// Find the task by ID
-const tasks = doc.flattenedTasks();
-let targetTask = null;
-
-for (let i = 0; i < tasks.length; i++) {
-  if (tasks[i].id() === '${taskId}') {
-    targetTask = tasks[i];
-    break;
-  }
-}
-
-if (!targetTask) {
-  throw new Error('Task not found');
-}
-
-// Toggle completion using OmniFocus 4 API methods
-if (${isComplete}) {
-  targetTask.markComplete();
-} else {
-  targetTask.markIncomplete();
-}
-
-// Return success
-JSON.stringify({
+    const result = await invokePluginAction('toggleTaskCompletion', {
+      id: taskId,
+      completed: Boolean(isComplete)
+    })
+    const formatted = formatTaskResult(result)
+    return {
   success: true,
-  taskId: targetTask.id(),
-  completed: targetTask.completed(),
-  completionDate: targetTask.completionDate() ? targetTask.completionDate().toISOString() : null
-});`
-    
-    // Write the JXA script to temporary file
-    await fs.writeFile(tempJxaPath, jxaScript)
-    
-    // Execute the JXA script
-    const { stdout: resultOutput, stderr } = await execAsync(`osascript -l JavaScript "${tempJxaPath}"`)
-    
-    // Clean up temporary file
-    try {
-      await fs.unlink(tempJxaPath)
-    } catch (cleanupError) {
-      console.warn('Failed to clean up temporary JXA file:', cleanupError.message)
+      taskId,
+      completed: formatted?.completed ?? Boolean(isComplete),
+      completionDate: formatted?.completionDate ?? null,
+      tags: formatted?.tags
     }
-    
-    if (stderr) {
-      console.error('JXA stderr:', stderr)
-      return { success: false, error: stderr }
-    }
-    
-    if (!resultOutput || resultOutput.trim() === '') {
-      return { success: false, error: 'No output from JXA script' }
-    }
-    
-    // Parse the JSON result
-    try {
-      const result = JSON.parse(resultOutput.trim())
-      console.log('Task completion toggled successfully:', result)
-      return result
-    } catch (parseError) {
-      console.error('Failed to parse JXA output:', parseError)
-      return { success: false, error: 'Failed to parse result' }
-    }
-    
   } catch (error) {
-    console.error('Error toggling task completion:', error)
+    console.error('Error toggling task completion via plugin:', error)
     return { success: false, error: error.message }
   }
 })
@@ -1068,663 +885,33 @@ JSON.stringify({
 // IPC handler for updating task properties (comprehensive update)
 ipcMain.handle('omnifocus:update-task', async (event, taskId, updates) => {
   try {
-    // Write debug info to file for compiled app debugging
-    const debugLog = `
-=== TASK UPDATE DEBUG ${new Date().toISOString()} ===
-Task ID: ${taskId}
-Full updates: ${JSON.stringify(updates, null, 2)}
-updates.context: ${updates.context}
-updates.completed: ${updates.completed}
-updates.completed type: ${typeof updates.completed}
-updates.completed === undefined: ${updates.completed === undefined}
-updates.completed === false: ${updates.completed === false}
-updates.completed === null: ${updates.completed === null}
-"completed" in updates: ${"completed" in updates}
-"context" in updates: ${"context" in updates}
-Context condition: ${updates.context !== undefined && (updates.completed === undefined || updates.completed === false)}
-=== END DEBUG ===
-`;
-    
-    try {
-      require('fs').appendFileSync(require('path').join(require('os').homedir(), 'omnifocus-debug.log'), debugLog);
-    } catch (e) {
-      console.error('Failed to write debug log:', e);
-    }
-    
-    console.log(`[OmniFocus] === TASK UPDATE DEBUG ===`)
-    console.log(`[OmniFocus] Task ID: ${taskId}`)
-    console.log(`[OmniFocus] Full updates object:`, JSON.stringify(updates, null, 2))
-    console.log(`[OmniFocus] updates.context:`, updates.context)
-    console.log(`[OmniFocus] updates.completed:`, updates.completed)
-    console.log(`[OmniFocus] updates.completed type:`, typeof updates.completed)
-    console.log(`[OmniFocus] updates.completed === undefined:`, updates.completed === undefined)
-    console.log(`[OmniFocus] updates.completed === false:`, updates.completed === false)
-    console.log(`[OmniFocus] updates.completed === null:`, updates.completed === null)
-    console.log(`[OmniFocus] "completed" in updates:`, "completed" in updates)
-    console.log(`[OmniFocus] "context" in updates:`, "context" in updates)
-    console.log(`[OmniFocus] Context condition check:`, updates.context !== undefined && (updates.completed === undefined || updates.completed === false))
-    console.log(`[OmniFocus] === END DEBUG ===`)
+    const normalizedUpdates = { ...(updates || {}) }
 
-    // First check if OmniFocus is running
-    const checkScript = `tell application "System Events" to return (name of processes) contains "OmniFocus"`
-    const { stdout: isRunningOutput } = await execAsync(`osascript -e '${checkScript}'`)
-    
-    if (!isRunningOutput.trim().toLowerCase().includes('true')) {
-      return { success: false, error: 'OmniFocus is not running. Please start OmniFocus and try again.' }
-    }
-    
-    // Build JXA script dynamically based on what needs to be updated
-    const tempJxaPath = path.join(require('os').tmpdir(), 'update_task_jxa.js')
-    
-    // Build update logic and completion logic
-    let updateLogic = ''
-    let completionLogic = ''
-    
-    // Ignore completedDate if it's passed - it's read-only in OmniFocus 4
-    // The markComplete() method sets it automatically
-    if (updates.completedDate !== undefined) {
-      console.log('[OmniFocus] Ignoring completedDate (read-only in OmniFocus 4, set automatically by markComplete())')
-    }
-    
-    // Handle completion state separately - must be done LAST
-    if (updates.completed !== undefined) {
-      // In OmniFocus 4, completed and completionDate are read-only
-      // Use markComplete() and markIncomplete() methods instead
-      if (updates.completed) {
-        completionLogic = `\n// Mark complete (must be done last)\ntargetTask.markComplete();\n`
-      } else {
-        completionLogic = `\n// Mark incomplete (must be done last)\ntargetTask.markIncomplete();\n`
-      }
-    }
-    
-    // OmniFocus 4 constraints:
-    // 1. Cannot update completion AND other properties in same operation
-    // 2. Cannot update context/tags AND other properties in same operation
-    // Only update if we're not changing completion state or context
-    if (updates.completed === undefined && updates.context === undefined) {
-      if (updates.name !== undefined) {
-        updateLogic += `console.log('[JXA] Setting name to:', '${updates.name.replace(/'/g, "\\'")}');\n`
-        updateLogic += `targetTask.name = '${updates.name.replace(/'/g, "\\'")}';\n`
-        updateLogic += `console.log('[JXA] Name set successfully');\n`
-      }
-      
-      if (updates.note !== undefined) {
-        updateLogic += `console.log('[JXA] Setting note');\n`
-        updateLogic += `targetTask.note = '${(updates.note || '').replace(/'/g, "\\'")}';\n`
-        updateLogic += `console.log('[JXA] Note set successfully');\n`
-      }
-      
-      if (updates.flagged !== undefined) {
-        updateLogic += `console.log('[JXA] Setting flagged to:', ${updates.flagged});\n`
-        updateLogic += `targetTask.flagged = ${updates.flagged};\n`
-        updateLogic += `console.log('[JXA] Flagged set successfully');\n`
-      }
-      
-      // Note: Due date updates are now handled directly with AppleScript below
-      // This section is kept for other properties that can be updated via JXA
-    }
-    
-    // OPTIMIZATION: Handle context/tag updates directly with AppleScript for better performance
-    const contextCondition = updates.context !== undefined && (updates.completed === undefined || updates.completed === false);
-    
-    if (contextCondition) {
-      console.log('[OmniFocus] Handling context update directly with AppleScript (JXA not supported in OmniFocus 4)')
-      
+    if (normalizedUpdates.tags !== undefined) {
       try {
-        if (updates.context) {
-          console.log('[OmniFocus] Setting context to:', updates.context)
-          const appleScript = `tell application "OmniFocus"
-  tell default document
-    set theTask to first flattened task whose id is "${taskId}"
-    set theTag to first flattened tag whose name is "${updates.context.replace(/'/g, "\\'")}"
-    set primary tag of theTask to theTag
-  end tell
-end tell`
-          
-          await execAsync(`osascript -e '${appleScript.replace(/'/g, "'\\''")}'`)
-          console.log('[OmniFocus] Context set via AppleScript')
-        } else {
-          console.log('[OmniFocus] Clearing context')
-          const appleScript = `tell application "OmniFocus"
-  tell default document
-    set theTask to first flattened task whose id is "${taskId}"
-    set primary tag of theTask to missing value
-  end tell
-end tell`
-          
-          await execAsync(`osascript -e '${appleScript.replace(/'/g, "'\\''")}'`)
-          console.log('[OmniFocus] Context cleared via AppleScript')
-        }
-      } catch (asError) {
-        console.error('[OmniFocus] AppleScript context update failed:', asError)
-        const msg = (asError && asError.message) ? asError.message : ''
-        const isTagNotFound = /flattened tag|Invalid index|\(-1719\)/i.test(msg)
-        if (isTagNotFound && updates.context) {
-          console.log('[OmniFocus] Attempting fuzzy match retry for context:', updates.context)
-          // Helper: fetch contexts via temporary JXA script
-          const getContexts = async () => {
-            const tempJxaPath = path.join(require('os').tmpdir(), 'get_contexts_retry_jxa.js')
-            const jxaScript = `const of = Application('OmniFocus');
-const doc = of.defaultDocument;
-let tags = [];
-try { tags = doc.flattenedTags(); } catch (e) { try { tags = doc.flattenedContexts(); } catch (e2) {} }
-const out = [];
-for (let i = 0; i < tags.length; i++) { try { out.push({ id: tags[i].id(), name: tags[i].name() }); } catch (e) {} }
-JSON.stringify(out);`
-            await fs.writeFile(tempJxaPath, jxaScript)
-            const { stdout } = await execAsync(`osascript -l JavaScript "${tempJxaPath}"`)
-            try { await fs.unlink(tempJxaPath) } catch {}
-            try { return JSON.parse(stdout || '[]') } catch { return [] }
-          }
-          const normalize = (s) => (s || '').trim().replace(/[\s,]+$/g, '')
-          const levenshtein = (a, b) => {
-            const m = a.length, n = b.length
-            if (!m) return n; if (!n) return m
-            const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0))
-            for (let i = 0; i <= m; i++) dp[i][0] = i
-            for (let j = 0; j <= n; j++) dp[0][j] = j
-            for (let i = 1; i <= m; i++) {
-              for (let j = 1; j <= n; j++) {
-                const cost = a[i - 1] === b[j - 1] ? 0 : 1
-                dp[i][j] = Math.min(dp[i-1][j] + 1, dp[i][j-1] + 1, dp[i-1][j-1] + cost)
-              }
-            }
-            return dp[m][n]
-          }
-          const bestMatch = (input, list) => {
-            const needle = normalize(input).toLowerCase()
-            if (!needle) return {}
-            const names = list.map(t => ({ id: t.id, name: t.name, lower: (t.name||'').toLowerCase() }))
-            const exact = names.find(t => t.lower === needle); if (exact) return { name: exact.name }
-            const starts = names.filter(t => t.lower.startsWith(needle)); if (starts.length === 1) return { name: starts[0].name }; if (starts.length > 1) return { ambiguous: true }
-            const incl = names.filter(t => t.lower.includes(needle)); if (incl.length === 1) return { name: incl[0].name }; if (incl.length > 1) return { ambiguous: true }
-            let best = null, bestDist = Number.MAX_SAFE_INTEGER
-            for (const t of names) { const d = levenshtein(needle, t.lower); if (d < bestDist) { bestDist = d; best = t } }
-            if (best && bestDist <= 2) return { name: best.name }
-            return {}
-          }
-          try {
-            const contexts = await getContexts()
-            const { name, ambiguous } = bestMatch(updates.context, contexts)
-            if (ambiguous || !name) {
-              console.error('[OmniFocus] Fuzzy retry failed: ambiguous or no match')
-              return { success: false, error: `Context update failed: ${asError.message}` }
-            }
-            console.log('[OmniFocus] Fuzzy retry with matched context:', name)
-            const retryScript = `tell application "OmniFocus"
-  tell default document
-    set theTask to first flattened task whose id is "${taskId}"
-    set theTag to first flattened tag whose name is "${name.replace(/'/g, "\\'")}"
-    set primary tag of theTask to theTag
-  end tell
-end tell`
-            await execAsync(`osascript -e '${retryScript.replace(/'/g, "'\\''")}'`)
-            console.log('[OmniFocus] Context set via AppleScript (fuzzy retry)')
-          } catch (retryErr) {
-            console.error('[OmniFocus] Fuzzy retry failed:', retryErr)
-            return { success: false, error: `Context update failed: ${asError.message}` }
-          }
-        } else {
-          return { success: false, error: `Context update failed: ${asError.message}` }
-        }
+        const resolvedTags = await setTaskTagsWithFuzzyMatching(taskId, normalizedUpdates.tags, { apply: false })
+        normalizedUpdates.tags = resolvedTags
+      } catch (tagError) {
+        console.error('[OmniFocus] Tag resolution failed:', tagError)
+        const message = tagError instanceof Error ? tagError.message : String(tagError)
+        return { success: false, error: `Tag update failed: ${message}` }
       }
     }
     
-    // Handle due date updates with JXA using proper OmniFocus 4 API methods
-    // Process due date separately even when context is present (OmniFocus 4 constraint)
-    if (updates.dueDate !== undefined) {
-      console.log('[OmniFocus] Handling due date update with JXA using setDueDate/clearDueDate methods')
-      
-      try {
-        // Create temporary JXA script
-        const tempJxaPath = path.join(require('os').tmpdir(), 'update_task_due_date_jxa.js')
-        
-        let jxaScript
-        if (updates.dueDate) {
-          const dateObj = new Date(updates.dueDate)
-          // Use milliseconds since epoch - more reliable in JXA
-          const milliseconds = dateObj.getTime()
-          console.log('[OmniFocus] Setting due date:', dateObj.toISOString(), `(${milliseconds} ms)`)
-          
-          jxaScript = `const of = Application('OmniFocus');
-const doc = of.defaultDocument;
-
-// Find the task by ID
-const tasks = doc.flattenedTasks();
-let targetTask = null;
-
-for (let i = 0; i < tasks.length; i++) {
-  if (tasks[i].id() === '${taskId}') {
-    targetTask = tasks[i];
-    break;
-  }
-}
-
-if (!targetTask) {
-  throw new Error('Task not found with ID: ${taskId}');
-}
-
-// Set due date using direct property assignment
-// Note: setDueDate() method throws "Can't convert types" error in OF4 JXA
-// Use direct property assignment instead (similar to lastReviewDate)
-const dueDateObj = new Date(${milliseconds});
-targetTask.dueDate = dueDateObj;
-
-// Return success with updated due date
-JSON.stringify({
-  success: true,
-  taskId: targetTask.id(),
-  dueDate: targetTask.dueDate() ? targetTask.dueDate().toISOString() : null
-});`
-        } else {
-          console.log('[OmniFocus] Clearing due date')
-          
-          jxaScript = `const of = Application('OmniFocus');
-const doc = of.defaultDocument;
-
-// Find the task by ID
-const tasks = doc.flattenedTasks();
-let targetTask = null;
-
-for (let i = 0; i < tasks.length; i++) {
-  if (tasks[i].id() === '${taskId}') {
-    targetTask = tasks[i];
-    break;
-  }
-}
-
-if (!targetTask) {
-  throw new Error('Task not found with ID: ${taskId}');
-}
-
-// Clear due date using direct property assignment
-// Note: clearDueDate() method may throw "Can't convert types" error in OF4 JXA
-// Use direct property assignment instead
-targetTask.dueDate = null;
-
-// Return success
-JSON.stringify({
-  success: true,
-  taskId: targetTask.id(),
-  dueDate: null
-});`
-        }
-        
-        // Write the JXA script to temporary file
-        await fs.writeFile(tempJxaPath, jxaScript)
-        
-        // Execute the JXA script and capture both stdout and stderr
-        const { stdout: resultOutput, stderr } = await execAsync(`osascript -l JavaScript "${tempJxaPath}"`)
-        
-        // Clean up temporary file
-        try {
-          await fs.unlink(tempJxaPath)
-        } catch (cleanupError) {
-          console.warn('Failed to clean up temporary JXA file:', cleanupError.message)
-        }
-        
-        // Check for errors in stderr
-        if (stderr) {
-          console.error('[OmniFocus] JXA stderr when updating due date:', stderr)
-          return { success: false, error: `Due date update failed: ${stderr}` }
-        }
-        
-        // Parse the JSON result
-        if (!resultOutput || resultOutput.trim() === '') {
-          return { success: false, error: 'No output from JXA script when updating due date' }
-        }
-        
-        try {
-          const result = JSON.parse(resultOutput.trim())
-          console.log('[OmniFocus] Due date update successful:', result)
-        } catch (parseError) {
-          console.error('[OmniFocus] Failed to parse JXA output when updating due date:', parseError)
-          console.error('[OmniFocus] Raw output:', resultOutput)
-          return { success: false, error: `Failed to parse due date update result: ${parseError.message}` }
-        }
-      } catch (asError) {
-        console.error('[OmniFocus] JXA due date update failed:', asError)
-        // Include stderr if available
-        const errorMessage = asError.stderr ? `${asError.message}\nstderr: ${asError.stderr}` : asError.message
-        return { success: false, error: `Due date update failed: ${errorMessage}` }
-      }
+    if (normalizedUpdates.completedDate !== undefined) {
+      delete normalizedUpdates.completedDate
     }
-    
-    // Skip main JXA script if there's nothing to update (due date was handled separately)
-    // Only execute if we have updateLogic or completionLogic to apply
-    if (!updateLogic.trim() && !completionLogic.trim()) {
-      console.log('[OmniFocus] No additional updates needed (due date was handled separately)')
-      return { success: true, taskId }
+
+    const pluginResult = await invokePluginAction('updateTask', { id: taskId, updates: normalizedUpdates })
+    const formatted = formatTaskResult(pluginResult)
+    return { 
+      success: true, 
+      taskId,
+      ...formatted
     }
-    
-    const jxaScript = `const of = Application('OmniFocus');
-const doc = of.defaultDocument;
-
-// Find the task by ID
-const tasks = doc.flattenedTasks();
-let targetTask = null;
-
-for (let i = 0; i < tasks.length; i++) {
-  if (tasks[i].id() === '${taskId}') {
-    targetTask = tasks[i];
-    break;
-  }
-}
-
-if (!targetTask) {
-  throw new Error('Task not found');
-}
-
-// Apply updates
-${updateLogic}${completionLogic}
-
-// Return updated task data
-// Wrap property reads in try-catch to handle any read errors gracefully
-let resultData = {
-  success: true,
-  taskId: targetTask.id()
-};
-
-try {
-  resultData.name = targetTask.name();
-} catch (e) {
-  resultData.name = null;
-}
-
-try {
-  resultData.note = targetTask.note() || '';
-} catch (e) {
-  resultData.note = '';
-}
-
-try {
-  resultData.flagged = targetTask.flagged();
-} catch (e) {
-  resultData.flagged = false;
-}
-
-try {
-  const dueDate = targetTask.dueDate();
-  resultData.dueDate = dueDate ? dueDate.toISOString() : null;
-} catch (e) {
-  resultData.dueDate = null;
-}
-
-try {
-  const primaryTag = targetTask.primaryTag();
-  resultData.context = primaryTag ? primaryTag.name() : null;
-} catch (e) {
-  resultData.context = null;
-}
-
-try {
-  resultData.completed = targetTask.completed();
-} catch (e) {
-  resultData.completed = false;
-}
-
-try {
-  const completionDate = targetTask.completionDate();
-  resultData.completionDate = completionDate ? completionDate.toISOString() : null;
-} catch (e) {
-  resultData.completionDate = null;
-}
-
-// Serialize and return the result
-JSON.stringify(resultData);`
-    
-    // Write the JXA script to temporary file
-    await fs.writeFile(tempJxaPath, jxaScript)
-    
-    // Debug: Log the generated JXA script
-    const jxaDebug = `
-=== GENERATED JXA SCRIPT ===
-Script length: ${jxaScript.length}
-updateLogic was populated with ${updateLogic.length} chars
-completionLogic was populated with ${completionLogic.length} chars
-First 500 chars of JXA script:
-${jxaScript.substring(0, 500)}
-...
-Last 500 chars of JXA script:
-${jxaScript.substring(jxaScript.length - 500)}
-=== END JXA SCRIPT ===
-`;
-    
-    try {
-      require('fs').appendFileSync(require('path').join(require('os').homedir(), 'omnifocus-debug.log'), jxaDebug);
-    } catch (e) {}
-    
-    console.log('[OmniFocus] === Generated JXA Script ===')
-    console.log(jxaScript)
-    console.log('[OmniFocus] === End JXA Script ===')
-    
-    // Execute the JXA script
-    const execDebug = `
-=== EXECUTING JXA SCRIPT ===
-Script path: ${tempJxaPath}
-About to execute...
-`;
-    
-    try {
-      require('fs').appendFileSync(require('path').join(require('os').homedir(), 'omnifocus-debug.log'), execDebug);
-    } catch (e) {}
-    
-    let resultOutput, stderr;
-    try {
-      const result = await execAsync(`osascript -l JavaScript "${tempJxaPath}"`)
-      resultOutput = result.stdout
-      stderr = result.stderr
-      
-      const execSuccessLog = `
-JXA execution completed without throwing
-stdout length: ${resultOutput ? resultOutput.length : 0}
-stderr length: ${stderr ? stderr.length : 0}
-`;
-      
-      try {
-        require('fs').appendFileSync(require('path').join(require('os').homedir(), 'omnifocus-debug.log'), execSuccessLog);
-      } catch (e) {}
-    } catch (execError) {
-      const execErrorLog = `
-JXA execution threw error:
-Error message: ${execError.message}
-Error code: ${execError.code}
-Error stdout: ${execError.stdout || '(none)'}
-Error stderr: ${execError.stderr || '(none)'}
-Error stack: ${execError.stack || '(none)'}
-`;
-      
-      try {
-        require('fs').appendFileSync(require('path').join(require('os').homedir(), 'omnifocus-debug.log'), execErrorLog);
-      } catch (e) {}
-      
-      // Include both stdout and stderr in error message for better debugging
-      const errorDetails = []
-      if (execError.stdout) {
-        errorDetails.push(`stdout: ${execError.stdout}`)
-        // If stdout contains console.log output but no actual error, note that
-        if (execError.stdout.includes('[JXA]') && !execError.stdout.includes('Error:')) {
-          errorDetails.push('(Note: Script executed but may have failed silently - check stderr or JSON parsing)')
-        }
-      }
-      if (execError.stderr) errorDetails.push(`stderr: ${execError.stderr}`)
-      if (!execError.stderr && !execError.stdout) {
-        errorDetails.push(`(No stdout/stderr captured - error: ${execError.message})`)
-      }
-      const fullError = errorDetails.length > 0 
-        ? `${execError.message}\n${errorDetails.join('\n')}`
-        : execError.message
-      
-      console.error('[OmniFocus] JXA execution error:', fullError)
-      console.error('[OmniFocus] Full error object:', JSON.stringify(execError, Object.getOwnPropertyNames(execError)))
-      return { success: false, error: fullError }
-    }
-    
-    const execResult = `
-=== JXA EXECUTION RESULT ===
-stdout: ${resultOutput}
-stderr: ${stderr}
-=== END EXECUTION RESULT ===
-`;
-    
-    try {
-      require('fs').appendFileSync(require('path').join(require('os').homedir(), 'omnifocus-debug.log'), execResult);
-    } catch (e) {}
-    
-    // Clean up temporary file
-    try {
-      await fs.unlink(tempJxaPath)
-    } catch (cleanupError) {
-      console.warn('Failed to clean up temporary JXA file:', cleanupError.message)
-    }
-    
-    if (stderr) {
-      console.error('[OmniFocus] JXA stderr:', stderr)
-      return { success: false, error: stderr }
-    }
-    
-    // Check if stdout contains error indicators (JXA errors sometimes go to stdout)
-    if (resultOutput && (resultOutput.includes('Error:') || resultOutput.includes('error:') || resultOutput.includes('SyntaxError') || resultOutput.includes('ReferenceError') || resultOutput.includes('TypeError'))) {
-      console.error('[OmniFocus] JXA error detected in stdout:', resultOutput)
-      return { success: false, error: resultOutput }
-    }
-    
-    if (!resultOutput || resultOutput.trim() === '') {
-      return { success: false, error: 'No output from JXA script' }
-    }
-    
-    // Parse the JSON result
-    try {
-      const result = JSON.parse(resultOutput.trim())
-      console.log('[OmniFocus] Task updated successfully:', result)
-      return result
-    } catch (parseError) {
-      console.error('[OmniFocus] Failed to parse JXA output:', parseError)
-      console.error('[OmniFocus] Raw output was:', resultOutput)
-      // If parsing fails, check if the output contains error messages
-      if (resultOutput.includes('Error:') || resultOutput.includes('error:')) {
-        return { success: false, error: resultOutput }
-      }
-      return { success: false, error: `Failed to parse result: ${parseError.message}. Output: ${resultOutput.substring(0, 500)}` }
-    }
-    
   } catch (error) {
-    console.error('[OmniFocus] Error updating task:', error)
+    console.error('Error updating task via plugin:', error)
     return { success: false, error: error.message }
-  }
-})
-
-// IPC handler for getting all contexts/tags from OmniFocus
-ipcMain.handle('omnifocus:get-contexts', async () => {
-  try {
-    console.log('Fetching contexts from OmniFocus')
-    
-    // First check if OmniFocus is running
-    const checkScript = `tell application "System Events" to return (name of processes) contains "OmniFocus"`
-    const { stdout: isRunningOutput } = await execAsync(`osascript -e '${checkScript}'`)
-    
-    if (!isRunningOutput.trim().toLowerCase().includes('true')) {
-      return { success: false, error: 'OmniFocus is not running. Please start OmniFocus and try again.', contexts: [] }
-    }
-    
-    // Create temporary JXA script for fetching contexts
-    const tempJxaPath = path.join(require('os').tmpdir(), 'get_contexts_jxa.js')
-    const jxaScript = `const of = Application('OmniFocus');
-const doc = of.defaultDocument;
-
-// Get all tags (OmniFocus 4 renamed contexts to tags)
-// Try both methods for compatibility with OF3 and OF4
-let tags = [];
-try {
-  // OmniFocus 4 uses flattenedTags
-  tags = doc.flattenedTags();
-} catch (e) {
-  try {
-    // OmniFocus 3 uses flattenedContexts
-    tags = doc.flattenedContexts();
-  } catch (e2) {
-    console.log('Error: Could not get tags/contexts');
-  }
-}
-
-const tagList = [];
-
-for (let i = 0; i < tags.length; i++) {
-  const tag = tags[i];
-  try {
-    // Filter out inactive/on-hold/dropped tags
-    // Only include active tags (status === "active" or available === true)
-    let isActive = true;
-    
-    try {
-      // Check if tag has status property (OF4)
-      const status = tag.status();
-      if (status && status !== 'active') {
-        isActive = false;
-      }
-    } catch (e) {
-      // If status() doesn't exist, try available property (OF3)
-      try {
-        const available = tag.available();
-        if (available === false) {
-          isActive = false;
-        }
-      } catch (e2) {
-        // If neither exist, assume active
-      }
-    }
-    
-    if (isActive) {
-      tagList.push({
-        id: tag.id(),
-        name: tag.name()
-      });
-    }
-  } catch (error) {
-    continue;
-  }
-}
-
-// Return as JSON
-JSON.stringify({
-  success: true,
-  contexts: tagList
-});`
-    
-    // Write the JXA script to temporary file
-    await fs.writeFile(tempJxaPath, jxaScript)
-    
-    // Execute the JXA script
-    const { stdout: resultOutput, stderr } = await execAsync(`osascript -l JavaScript "${tempJxaPath}"`)
-    
-    // Clean up temporary file
-    try {
-      await fs.unlink(tempJxaPath)
-    } catch (cleanupError) {
-      console.warn('Failed to clean up temporary JXA file:', cleanupError.message)
-    }
-    
-    if (stderr) {
-      console.error('JXA stderr:', stderr)
-    }
-    
-    if (!resultOutput || resultOutput.trim() === '') {
-      return { success: true, contexts: [] }
-    }
-    
-    // Parse the JSON result
-    try {
-      const result = JSON.parse(resultOutput.trim())
-      console.log(`Found ${result.contexts.length} contexts in OmniFocus`)
-      return result
-    } catch (parseError) {
-      console.error('Failed to parse JXA output:', parseError)
-      return { success: false, error: 'Failed to parse contexts', contexts: [] }
-    }
-    
-  } catch (error) {
-    console.error('Error fetching contexts:', error)
-    return { success: false, error: error.message, contexts: [] }
   }
 })
 
@@ -1732,82 +919,18 @@ JSON.stringify({
 ipcMain.handle('omnifocus:create-task', async (event, projectId, taskName) => {
   try {
     console.log(`Creating task "${taskName}" in project ${projectId}`)
-    
-    // First check if OmniFocus is running
-    const checkScript = `tell application "System Events" to return (name of processes) contains "OmniFocus"`
-    const { stdout: isRunningOutput } = await execAsync(`osascript -e '${checkScript}'`)
-    
-    if (!isRunningOutput.trim().toLowerCase().includes('true')) {
-      return { success: false, error: 'OmniFocus is not running. Please start OmniFocus and try again.' }
-    }
-    
-    // Create temporary JXA script for task creation
-    const tempJxaPath = path.join(require('os').tmpdir(), 'create_task_jxa.js')
-    const jxaScript = `const of = Application('OmniFocus');
-const doc = of.defaultDocument;
-
-// Find the project by ID
-const projects = doc.flattenedProjects();
-let targetProject = null;
-
-for (let i = 0; i < projects.length; i++) {
-  if (projects[i].id() === '${projectId}') {
-    targetProject = projects[i];
-    break;
-  }
-}
-
-if (!targetProject) {
-  throw new Error('Project not found');
-}
-
-// Create the new task
-const newTask = of.Task({
-  name: '${taskName.replace(/'/g, "\\'")}'
-});
-
-// Add task to the project
-targetProject.tasks.push(newTask);
-
-// Return success with the new task ID
-JSON.stringify({
+    const pluginResult = await invokePluginAction('createTask', {
+      projectId,
+      name: taskName
+    })
+    console.log('Task created successfully via plugin:', pluginResult)
+    const formatted = formatTaskResult(pluginResult)
+    return {
   success: true,
-  taskId: newTask.id(),
-  taskName: newTask.name()
-});`
-    
-    // Write the JXA script to temporary file
-    await fs.writeFile(tempJxaPath, jxaScript)
-    
-    // Execute the JXA script
-    const { stdout: resultOutput, stderr } = await execAsync(`osascript -l JavaScript "${tempJxaPath}"`)
-    
-    // Clean up temporary file
-    try {
-      await fs.unlink(tempJxaPath)
-    } catch (cleanupError) {
-      console.warn('Failed to clean up temporary JXA file:', cleanupError.message)
+      taskId: pluginResult?.id || pluginResult?.taskId,
+      taskName: pluginResult?.name || taskName,
+      tags: formatted?.tags || []
     }
-    
-    if (stderr) {
-      console.error('JXA stderr:', stderr)
-      return { success: false, error: stderr }
-    }
-    
-    if (!resultOutput || resultOutput.trim() === '') {
-      return { success: false, error: 'No output from JXA script' }
-    }
-    
-    // Parse the JSON result
-    try {
-      const result = JSON.parse(resultOutput.trim())
-      console.log('Task created successfully:', result)
-      return result
-    } catch (parseError) {
-      console.error('Failed to parse JXA output:', parseError)
-      return { success: false, error: 'Failed to parse result' }
-    }
-    
   } catch (error) {
     console.error('Error creating task:', error)
     return { success: false, error: error.message }
@@ -1817,67 +940,17 @@ JSON.stringify({
 ipcMain.handle('omnifocus:create-inbox-task', async (event, taskName) => {
   try {
     console.log(`Creating inbox task "${taskName}"`)
-    
-    // First check if OmniFocus is running
-    const checkScript = `tell application "System Events" to return (name of processes) contains "OmniFocus"`
-    const { stdout: isRunningOutput } = await execAsync(`osascript -e '${checkScript}'`)
-    
-    if (!isRunningOutput.trim().toLowerCase().includes('true')) {
-      return { success: false, error: 'OmniFocus is not running. Please start OmniFocus and try again.' }
-    }
-    
-    // Create temporary JXA script for inbox task creation
-    const tempJxaPath = path.join(require('os').tmpdir(), 'create_inbox_task_jxa.js')
-    const jxaScript = `const of = Application('OmniFocus');
-const doc = of.defaultDocument;
-
-// Create the new inbox task
-const newTask = of.Task({
-  name: '${taskName.replace(/'/g, "\\'")}'
-});
-
-// Add task to inbox (no project assignment)
-doc.inboxTasks.push(newTask);
-
-// Return success with the new task ID
-JSON.stringify({
+    const pluginResult = await invokePluginAction('createInboxTask', {
+      name: taskName
+    })
+    console.log('Inbox task created successfully via plugin:', pluginResult)
+    const formatted = formatTaskResult(pluginResult)
+    return {
   success: true,
-  taskId: newTask.id(),
-  taskName: newTask.name()
-});`
-    
-    // Write the JXA script to temporary file
-    await fs.writeFile(tempJxaPath, jxaScript)
-    
-    // Execute the JXA script
-    const { stdout: resultOutput, stderr } = await execAsync(`osascript -l JavaScript "${tempJxaPath}"`)
-    
-    // Clean up temporary file
-    try {
-      await fs.unlink(tempJxaPath)
-    } catch (cleanupError) {
-      console.warn('Failed to clean up temporary JXA file:', cleanupError.message)
+      taskId: pluginResult?.id || pluginResult?.taskId,
+      taskName: pluginResult?.name || taskName,
+      tags: formatted?.tags || []
     }
-    
-    if (stderr) {
-      console.error('JXA stderr:', stderr)
-      return { success: false, error: stderr }
-    }
-    
-    if (!resultOutput || resultOutput.trim() === '') {
-      return { success: false, error: 'No output from JXA script' }
-    }
-    
-    // Parse the JSON result
-    try {
-      const result = JSON.parse(resultOutput.trim())
-      console.log('Inbox task created successfully:', result)
-      return result
-    } catch (parseError) {
-      console.error('Failed to parse JXA output:', parseError)
-      return { success: false, error: 'Failed to parse result' }
-    }
-    
   } catch (error) {
     console.error('Error creating inbox task:', error)
     return { success: false, error: error.message }
@@ -2442,9 +1515,9 @@ ipcMain.handle('notion:append-tasks-log', async (event, pageId, tasks) => {
         taskText.push(`(Due: ${formattedDate})`)
       }
       
-      // Add context if present
-      if (task.context) {
-        taskText.push(`(Context: ${task.context})`)
+      // Add tags if present
+      if (task.tags && task.tags.length > 0) {
+        taskText.push(`(Tags: ${task.tags.join(', ')})`)
       }
       
       // Add completion status

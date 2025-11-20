@@ -185,6 +185,25 @@ npm run build
 npm run electron:build
 ```
 
+### OmniFocus Plug-In Setup (Required for Writes)
+
+All task and project mutations now run inside OmniFocus via the **Blinders Bridge** plug-in. Install it once and keep it in sync whenever `weekly-review-hud/omnifocus-plugin/com.example.blinders.omnijs` changes.
+
+1. Copy the plug-in into OmniFocus’ Automation folder:
+   ```bash
+   cp weekly-review-hud/omnifocus-plugin/com.example.blinders.omnijs \\
+      ~/Library/Application\\ Scripts/com.omnigroup.OmniFocus4/com.example.blinders.omnijs
+   ```
+2. In OmniFocus: `Automation → Configure Plug-Ins…` and link `~/Library/Application Scripts/com.omnigroup.OmniFocus4`.
+3. Enable **Allow external scripts** under `OmniFocus → Preferences → Automation`.
+4. Approve the Script Security prompt with “Always Allow” the first time Electron triggers the plug-in.
+5. Run the smoke test to verify every action end-to-end:
+   ```bash
+   node weekly-review-hud/scripts/test-omnifocus-plugin.cjs
+   ```
+
+See [`docs/OMNIFOCUS_PLUGIN_SETUP.md`](docs/OMNIFOCUS_PLUGIN_SETUP.md) for detailed setup + troubleshooting notes.
+
 ## Usage
 
 ### Starting a Review Session
