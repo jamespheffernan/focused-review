@@ -102,76 +102,12 @@ class TaskSyncQueue {
         
         console.log('[TaskSyncQueue] After filtering completedDate:', JSON.stringify(syncUpdates))
 
-        // Normalize and validate context if present
-        if (syncUpdates.context !== undefined) {
-          const normalizeContextInput = (value: string): string => value.trim().replace(/[\s,]+$/g, '')
-          const levenshtein = (a: string, b: string): number => {
-            const m = a.length
-            const n = b.length
-            if (m === 0) return n
-            if (n === 0) return m
-            const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0))
-            for (let i = 0; i <= m; i++) dp[i][0] = i
-            for (let j = 0; j <= n; j++) dp[0][j] = j
-            for (let i = 1; i <= m; i++) {
-              for (let j = 1; j <= n; j++) {
-                const cost = a[i - 1] === b[j - 1] ? 0 : 1
-                dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost)
-              }
-            }
-            return dp[m][n]
-          }
-          const bestContextMatch = (
-            rawInput: string,
-            contexts: Array<{ id: string; name: string }>
-          ): { name?: string; ambiguous?: boolean } => {
-            const input = normalizeContextInput(rawInput)
-            if (!input) return {}
-            const lower = input.toLowerCase()
-            const names = contexts.map(c => ({ ...c, lower: c.name.toLowerCase() }))
-            const exact = names.find(c => c.lower === lower)
-            if (exact) return { name: exact.name }
-            const starts = names.filter(c => c.lower.startsWith(lower))
-            if (starts.length === 1) return { name: starts[0].name }
-            if (starts.length > 1) return { ambiguous: true }
-            const incl = names.filter(c => c.lower.includes(lower))
-            if (incl.length === 1) return { name: incl[0].name }
-            if (incl.length > 1) return { ambiguous: true }
-            let best: { name: string } | undefined
-            let bestDist = Number.MAX_SAFE_INTEGER
-            for (const c of names) {
-              const d = levenshtein(lower, c.lower)
-              if (d < bestDist) {
-                bestDist = d
-                best = { name: c.name }
-              }
-            }
-            if (best && bestDist <= 2) return best
-            return {}
-          }
-
-          const raw = typeof syncUpdates.context === 'string' ? syncUpdates.context : ''
-          const normalized = normalizeContextInput(raw)
-          if (normalized) {
-            try {
-              const contexts = await omnifocusBridge.getContexts()
-              const { name, ambiguous } = bestContextMatch(normalized, contexts)
-              if (ambiguous) {
-                throw new Error('Ambiguous context; multiple matches')
-              }
-              if (!name) {
-                throw new Error('Context not found')
-              }
-              syncUpdates.context = name
-            } catch (e) {
-              console.error('[TaskSyncQueue] Context validation failed:', e)
-              // Move to failed items immediately; let UI surface retry banner
-              item.retryCount = this.maxRetries
-              throw new Error(e instanceof Error ? e.message : 'Invalid context')
-            }
-          } else {
-            // Empty/cleared context is allowed; ensure undefined to clear
-            syncUpdates.context = undefined
+        // Tags are handled by the plugin bridge with fuzzy matching, no validation needed here
+        // Just ensure tags is an array if present
+        if (syncUpdates.tags !== undefined) {
+          if (!Array.isArray(syncUpdates.tags)) {
+            console.warn('[TaskSyncQueue] Tags must be an array, converting...')
+            syncUpdates.tags = []
           }
         }
         

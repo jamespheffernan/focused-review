@@ -17,8 +17,8 @@ interface TaskFilterProps {
 export default function TaskFilter({ filters, onFiltersChange, tasks }: TaskFilterProps) {
   const [isExpanded, setIsExpanded] = useState(false)
 
-  // Get unique contexts from tasks
-  const contexts = Array.from(new Set(tasks.map(t => t.context).filter(Boolean)))
+  // Get unique tags from tasks
+  const contexts = Array.from(new Set(tasks.flatMap(t => t.tags || []).filter(Boolean)))
 
   const handleFilterChange = (key: keyof TaskFilters, value: string | boolean | undefined) => {
     const newFilters = { ...filters }

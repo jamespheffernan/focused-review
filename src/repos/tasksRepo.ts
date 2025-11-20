@@ -394,11 +394,11 @@ async function syncTaskToOmniFocus(task: TaskDTO): Promise<void> {
     const omniFocusTaskId = createResult.taskId
     console.log(`Task created in OmniFocus with ID: ${omniFocusTaskId}`)
     
-    // Step 2: Set additional properties if they exist
-    if (task.context) {
-      const contextResult = await omnifocusBridge.setTaskContext(omniFocusTaskId, task.context)
-      if (!contextResult.success) {
-        console.warn(`Failed to set context: ${contextResult.error}`)
+    // Step 2: Set tags if they exist
+    if (task.tags && task.tags.length > 0) {
+      const tagsResult = await omnifocusBridge.setTaskTags(omniFocusTaskId, task.tags)
+      if (!tagsResult.success) {
+        console.warn(`Failed to set tags: ${tagsResult.error}`)
       }
     }
     

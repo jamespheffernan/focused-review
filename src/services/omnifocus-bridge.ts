@@ -633,7 +633,7 @@ class OmniFocusBridge {
         name: task.name,
         status: this.convertTaskStatus(task.status),
         dueDate: task.dueDate,
-        tags: normalizeTagList(task.tags, task.context),
+        tags: normalizeTagList(task.tags), // Tags should always be an array now
         flagged: Boolean(task.flagged),
         note: task.note || '',
         completed: Boolean(task.completed),
