@@ -13,14 +13,11 @@ interface TaskFormProps {
 export default function TaskForm({ projectId, task, onSave, onCancel }: TaskFormProps) {
   const isEditMode = !!task
   
-  // Normalize tags from task - handle both array and legacy context field
+  // Normalize tags from task - should always be an array now
   const normalizeTaskTags = (task: TaskDTO | undefined): string[] => {
     if (!task) return []
-    if (Array.isArray(task.tags) && task.tags.length > 0) {
+    if (Array.isArray(task.tags)) {
       return task.tags.filter(tag => tag && tag.trim().length > 0)
-    }
-    if (task.context && task.context.trim().length > 0) {
-      return [task.context.trim()]
     }
     return []
   }
@@ -42,7 +39,6 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
         taskId: task.id, 
         taskName: task.name,
         rawTags: task.tags,
-        context: task.context,
         normalizedTags: normalized 
       })
       setSelectedTags(normalized)

@@ -110,6 +110,30 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
     }
   }
 
+  const handleInstructionAcknowledge = () => {
+    if (!project || !q) return
+
+    const entry = {
+      id: q.id,
+      prompt: q.prompt,
+      answer: 'Instruction acknowledged',
+      status: 'answered' as const,
+      draftStatus: 'Updated' as const
+    }
+
+    setAnsweredQuestions(prev => {
+      const existingIndex = prev.findIndex(aq => aq.id === q.id)
+      if (existingIndex >= 0) {
+        const updated = [...prev]
+        updated[existingIndex] = entry
+        return updated
+      }
+      return [...prev, entry]
+    })
+
+    moveToNextQuestion()
+  }
+
   // Handle task deletion
   const handleTaskDelete = async (taskId: string) => {
     try {
@@ -509,12 +533,13 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
       if (!allQuestions.some(fq => fq.id === followupQuestionId)) {
         // Determine followup prompt based on question type
         let followupPrompt = ''
-        let followupType: 'text' | 'text-parsed' = 'text'
+        let followupType: QuestionDTO['type'] = 'text'
         
         if (packageId === 'pkg-alignment') {
           followupPrompt = 'Should you deprioritize it then? Why are you still doing this project?'
         } else if (packageId === 'pkg-next-action') {
           followupPrompt = 'Please edit your task details and define a clear next action.'
+          followupType = 'instruction'
         } else if (packageId === 'pkg-timeline') {
           followupPrompt = "What's the new realistic timeline for this project?"
           followupType = 'text-parsed'
@@ -541,12 +566,13 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
       // Initial questions can also have followups, but with different logic
       if (!allQuestions.some(fq => fq.id === followupQuestionId)) {
         let followupPrompt = ''
-        const followupType: 'text' | 'text-parsed' = 'text'
+        let followupType: QuestionDTO['type'] = 'text'
         
         if (packageId === 'pkg-alignment') {
           followupPrompt = 'Should you deprioritize it then? Why are you doing this project?'
         } else if (packageId === 'pkg-next-action') {
           followupPrompt = 'Please edit your task details and define a clear next action.'
+          followupType = 'instruction'
         }
         // Note: pkg-timeline initial is NOT yes/no, so no followup here
         
@@ -978,6 +1004,42 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
               </div>
             )}
           </>
+        ) : q.type === 'instruction' ? (
+          <div
+            style={{
+              width: '100%',
+              background: 'rgba(33, 150, 243, 0.12)',
+              border: '1px solid rgba(33, 150, 243, 0.3)',
+              borderRadius: '12px',
+              padding: '20px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px'
+            }}
+          >
+            <div style={{ fontSize: '1em', lineHeight: 1.5 }}>
+              {q.prompt}
+            </div>
+            <div style={{ fontSize: '0.9em', opacity: 0.8 }}>
+              Update the task details in the panel on the right, then continue.
+            </div>
+            <div>
+              <button
+                onClick={handleInstructionAcknowledge}
+                style={{
+                  background: '#2196F3',
+                  border: 'none',
+                  color: 'white',
+                  padding: '10px 18px',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '0.95em'
+                }}
+              >
+                Continue
+              </button>
+            </div>
+          </div>
         ) : q.type === 'yes-no' ? (
           <div className="yes-no-selector">
             <div className="yes-no-options">

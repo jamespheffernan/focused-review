@@ -129,12 +129,12 @@ export async function restoreDefaults(): Promise<void> {
       initialQuestionType: 'yes-no',
       initialFollowupLogic: 'if_no',
       initialFollowup: 'Please edit your task details and define a clear next action.',
-      initialFollowupType: 'text',
+      initialFollowupType: 'instruction',
       subsequentQuestion: 'Have you defined the next physical action you can take to move this project forward?',
       subsequentQuestionType: 'yes-no',
       subsequentFollowupLogic: 'if_no',
       subsequentFollowup: 'Please edit your task details and define a clear next action.',
-      subsequentFollowupType: 'text'
+      subsequentFollowupType: 'instruction'
     },
     {
       id: 'pkg-timeline',

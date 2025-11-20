@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Clear Database</title>
+  <script src="https://unpkg.com/dexie@latest/dist/dexie.js"></script>
+</head>
+<body>
+  <h1>Database Clearer</h1>
+  <button onclick="clearDB()">Clear Database</button>
+  <div id="output"></div>
+  
+  <script>
+    async function clearDB() {
+      const output = document.getElementById('output');
+      try {
+        output.innerHTML = 'Deleting database...';
+        await Dexie.delete('reviewhud');
+        output.innerHTML = 'Database deleted! Reload the app.';
+      } catch (error) {
+        output.innerHTML = 'Error: ' + error.message;
+      }
+    }
+  </script>
+</body>
+</html>

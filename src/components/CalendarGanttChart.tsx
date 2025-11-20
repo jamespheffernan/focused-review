@@ -48,29 +48,6 @@ export default function CalendarGanttChart({ commitments }: CalendarGanttChartPr
         marginBottom: '20px',
         borderBottom: '2px solid rgba(255, 255, 255, 0.2)'
       }}>
-        {/* Today marker */}
-        <div style={{
-          position: 'absolute',
-          left: '0%',
-          top: 0,
-          bottom: -4,
-          width: '2px',
-          background: '#2196F3',
-          zIndex: 2
-        }}>
-          <div style={{
-            position: 'absolute',
-            top: '-24px',
-            left: '-20px',
-            fontSize: '0.75em',
-            fontWeight: '600',
-            color: '#2196F3',
-            whiteSpace: 'nowrap'
-          }}>
-            Today
-          </div>
-        </div>
-
         {/* Month markers */}
         {monthMarkers.map((marker, i) => (
           <div

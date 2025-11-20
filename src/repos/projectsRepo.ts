@@ -362,7 +362,8 @@ export async function importOmniFocusProjectsWithTasks(projects: OmniFocusBridge
             continue
           }
           
-          const tags = Array.isArray(task.tags) ? task.tags : (task.context ? [task.context] : [])
+          // Tags should always be an array now (SQLite reader returns array)
+          const tags = Array.isArray(task.tags) ? task.tags.filter(t => t && t.trim().length > 0) : []
           allTasks.push({
             id: task.id,
             projectId: project.id,
@@ -370,7 +371,6 @@ export async function importOmniFocusProjectsWithTasks(projects: OmniFocusBridge
             status: task.status || 'available',
             dueDate: task.dueDate || undefined,
             deferDate: task.deferDate || undefined,
-            context: task.context || tags[0] || undefined,
             tags,
             flagged: task.flagged || false,
             note: task.note || '',

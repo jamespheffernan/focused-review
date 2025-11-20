@@ -45,16 +45,10 @@ export default function TaskItem({
 
   const dueInfo = formatDate(task.dueDate)
 
-  // Normalize tags - handle both array and legacy context field
-  const taskTags = (() => {
-    if (Array.isArray(task.tags) && task.tags.length > 0) {
-      return task.tags.filter(tag => tag && tag.trim().length > 0)
-    }
-    if (task.context && task.context.trim().length > 0) {
-      return [task.context.trim()]
-    }
-    return []
-  })()
+  // Normalize tags - should always be an array now
+  const taskTags = Array.isArray(task.tags) 
+    ? task.tags.filter(tag => tag && tag.trim().length > 0)
+    : []
   
   // Debug logging
   if (taskTags.length > 0) {
@@ -62,8 +56,7 @@ export default function TaskItem({
       taskId: task.id, 
       taskName: task.name,
       tags: taskTags,
-      rawTags: task.tags,
-      context: task.context
+      rawTags: task.tags
     })
   }
 

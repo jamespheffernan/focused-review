@@ -20,7 +20,6 @@ export interface TaskDTO {
   status: TaskStatus
   dueDate?: string
   deferDate?: string
-  context?: string
   tags: string[]
   flagged: boolean
   note?: string

@@ -180,34 +180,36 @@ function queryTasksForProject(db, projectId) {
 /**
  * Query contexts (tags) for tasks
  */
-function queryTaskContexts(db, taskIds) {
+function queryTaskTags(db, taskIds) {
   if (taskIds.length === 0) return new Map()
   
   const placeholders = taskIds.map(() => '?').join(',')
   const query = `
     SELECT 
       TaskToTag.task as taskId,
-      Context.name as contextName
+      Context.name as tagName
     FROM TaskToTag
     INNER JOIN Context ON TaskToTag.tag = Context.persistentIdentifier
     WHERE TaskToTag.task IN (${placeholders})
+    ORDER BY TaskToTag.task, Context.name
   `
   
   try {
     const stmt = db.prepare(query)
     const results = stmt.all(...taskIds)
     
+    // Group all tags by task ID (not just the first one)
     const map = new Map()
-    results.forEach(ctx => {
-      // Only store the first context for each task
-      if (!map.has(ctx.taskId)) {
-        map.set(ctx.taskId, ctx.contextName)
+    results.forEach(row => {
+      if (!map.has(row.taskId)) {
+        map.set(row.taskId, [])
       }
+      map.get(row.taskId).push(row.tagName)
     })
     
     return map
   } catch (error) {
-    console.error('Error querying task contexts:', error.message)
+    console.error('Error querying task tags:', error.message)
     return new Map()
   }
 }
@@ -215,7 +217,7 @@ function queryTaskContexts(db, taskIds) {
 /**
  * Map raw database data to app format
  */
-function mapToAppFormat(rawProjects, projectInfoMap, allTasks, taskContexts) {
+function mapToAppFormat(rawProjects, projectInfoMap, allTasks, taskTags) {
   return rawProjects.map(rawProject => {
     // Get project info for review dates
     const projectInfo = projectInfoMap.get(rawProject.projectInfo || '')
@@ -237,13 +239,16 @@ function mapToAppFormat(rawProjects, projectInfoMap, allTasks, taskContexts) {
         taskStatus = 'blocked'
       }
       
+      // Get all tags for this task (array, not single context)
+      const tags = taskTags.get(rawTask.persistentIdentifier) || []
+      
       return {
         id: rawTask.persistentIdentifier,
         name: rawTask.name,
         status: taskStatus,
         dueDate: convertTimestamp(rawTask.effectiveDateDue),
         deferDate: convertTimestamp(rawTask.effectiveDateToStart),
-        context: taskContexts.get(rawTask.persistentIdentifier) || null,
+        tags: tags, // Array of all tags
         flagged: Boolean(rawTask.flagged),
         note: rawTask.plainTextNote || '',
         completed: Boolean(rawTask.dateCompleted),
@@ -300,13 +305,14 @@ function getProjects() {
     
     console.log(`📊 [SQLite] Found ${totalTasks} tasks across all projects`)
     
-    // Query contexts for all tasks
+    // Query tags for all tasks
     const allTaskIds = Array.from(allTasks.values()).flat().map(t => t.persistentIdentifier)
-    const taskContexts = queryTaskContexts(db, allTaskIds)
-    console.log(`📊 [SQLite] Found ${taskContexts.size} task contexts`)
+    const taskTags = queryTaskTags(db, allTaskIds)
+    const totalTags = Array.from(taskTags.values()).reduce((sum, tags) => sum + tags.length, 0)
+    console.log(`📊 [SQLite] Found ${taskTags.size} tasks with ${totalTags} total tags`)
     
     // Map to app format
-    const projects = mapToAppFormat(rawProjects, projectInfoMap, allTasks, taskContexts)
+    const projects = mapToAppFormat(rawProjects, projectInfoMap, allTasks, taskTags)
     
     console.log(`📊 [SQLite] Successfully mapped ${projects.length} projects`)
     

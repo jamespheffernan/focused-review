@@ -441,7 +441,7 @@ class OmniFocusBridge {
               status: this.convertTaskStatus?.(task.status) ?? 'available',
               dueDate: task.dueDate,
               deferDate: task.deferDate,
-              tags: normalizeTagList(task.tags, task.context),
+              tags: normalizeTagList(task.tags), // SQLite reader now returns tags array directly
               flagged: Boolean(task.flagged),
               note: task.note || '',
               completed: Boolean(task.completed),

@@ -20,7 +20,10 @@ function formatEngagementScore(score: number): string {
 /**
  * Format a single answer with its question
  */
-function formatAnswer(answer: AnswerDraft, question: QuestionDTO): string {
+function formatAnswer(answer: AnswerDraft, question: QuestionDTO): string | null {
+  if (question.type === 'instruction') {
+    return null
+  }
   // For engagement/slider questions
   if (question.type === 'slider' && answer.engagementScore !== undefined) {
     const formattedScore = formatEngagementScore(answer.engagementScore)
@@ -85,8 +88,11 @@ export function formatReviewAsMarkdown(
     if (id === 'pkg-alignment-subsequent-followup') {
       return { prompt: 'Should you deprioritize it then? Why are you still doing this project?', type: 'text', baseId: 'pkg-alignment-subsequent' }
     }
+    if (id === 'pkg-next-action-initial-followup') {
+      return { prompt: 'Please edit your task details and define a clear next action.', type: 'instruction', baseId: 'pkg-next-action-initial' }
+    }
     if (id === 'pkg-next-action-subsequent-followup') {
-      return { prompt: 'Please edit your task details and define a clear next action.', type: 'text', baseId: 'pkg-next-action-subsequent' }
+      return { prompt: 'Please edit your task details and define a clear next action.', type: 'instruction', baseId: 'pkg-next-action-subsequent' }
     }
     if (id === 'pkg-timeline-subsequent-followup') {
       return { prompt: "What's the new realistic timeline for this project?", type: 'text-parsed', baseId: 'pkg-timeline-subsequent' }
@@ -128,6 +134,7 @@ export function formatReviewAsMarkdown(
     .filter((item): item is { answer: AnswerDraft; question: QuestionDTO } => item !== null)
     .sort((a, b) => a.question.order - b.question.order) // Sort by question order
     .map(({ answer, question }) => formatAnswer(answer, question))
+    .filter((entry): entry is string => entry !== null)
   
   // Combine into final markdown
   const markdown = [
