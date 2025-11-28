@@ -261,7 +261,7 @@ async function loadEnvVarsFromShell() {
     console.log('🔍 Attempting to load Notion environment variables from shell...')
     
     // Read env vars using shell (which sources .zshrc/.bashrc)
-    const { stdout } = await execAsync('source ~/.zshrc 2>/dev/null || source ~/.bashrc 2>/dev/null; echo "NOTION_TOKEN=$NOTION_TOKEN"; echo "NOTION_PROJECT_DB=$NOTION_PROJECT_DB"; echo "NOTION_ARCHIVE_DB=$NOTION_ARCHIVE_DB"; echo "NOTION_SOMEDAY_DB=$NOTION_SOMEDAY_DB"')
+    const { stdout } = await execAsync('source ~/.zshrc 2>/dev/null || source ~/.bashrc 2>/dev/null; echo "NOTION_TOKEN=$NOTION_TOKEN"; echo "NOTION_PROJECT_DB=$NOTION_PROJECT_DB"; echo "NOTION_ARCHIVE_DB=$NOTION_ARCHIVE_DB"; echo "NOTION_SOMEDAY_DB=$NOTION_SOMEDAY_DB"; echo "NOTION_SOMEDAY_DB_PERSONAL=$NOTION_SOMEDAY_DB_PERSONAL"; echo "NOTION_SOMEDAY_DB_BUSINESS=$NOTION_SOMEDAY_DB_BUSINESS"')
     
     const lines = stdout.trim().split('\n')
     for (const line of lines) {
@@ -957,6 +957,74 @@ ipcMain.handle('omnifocus:create-inbox-task', async (event, taskName) => {
   }
 })
 
+ipcMain.handle('omnifocus:create-project', async (event, projectName, firstTaskName, taskUpdates = {}) => {
+  try {
+    console.log(`Creating project "${projectName}" with first task "${firstTaskName}"`, { taskUpdates })
+    
+    // Step 1: Create the project
+    const projectResult = await invokePluginAction('createProject', {
+      name: projectName
+    })
+    
+    if (!projectResult || !projectResult.id) {
+      throw new Error('Failed to create project - no ID returned')
+    }
+    
+    const projectId = projectResult.id
+    console.log(`Project created successfully: ${projectId}`)
+    
+    // Step 2: Create the first task in the project with updates
+    if (firstTaskName && firstTaskName.trim()) {
+      // Prepare task creation payload with updates
+      const taskPayload = {
+        projectId: projectId,
+        name: firstTaskName.trim(),
+        updates: {}
+      }
+      
+      // Add tags/context if provided
+      if (taskUpdates.tags && Array.isArray(taskUpdates.tags)) {
+        taskPayload.updates.tags = taskUpdates.tags
+      }
+      
+      // Add due date if provided
+      if (taskUpdates.dueDate) {
+        taskPayload.updates.dueDate = taskUpdates.dueDate
+      }
+      
+      // Add defer date if provided
+      if (taskUpdates.deferDate) {
+        taskPayload.updates.deferDate = taskUpdates.deferDate
+      }
+      
+      console.log('Creating task with payload:', taskPayload)
+      const taskResult = await invokePluginAction('createTask', taskPayload)
+      
+      console.log(`First task created successfully: ${taskResult?.id}`)
+      
+      return {
+        success: true,
+        projectId: projectId,
+        projectName: projectResult.name || projectName,
+        taskId: taskResult?.id,
+        taskName: taskResult?.name || firstTaskName
+      }
+    }
+    
+    // If no task name provided, just return the project
+    return {
+      success: true,
+      projectId: projectId,
+      projectName: projectResult.name || projectName,
+      taskId: null,
+      taskName: null
+    }
+  } catch (error) {
+    console.error('Error creating project with task:', error)
+    return { success: false, error: error.message }
+  }
+})
+
 ipcMain.handle('omnifocus:get-database-path', async () => {
   try {
     // Try to find OmniFocus database files
@@ -1627,6 +1695,363 @@ ipcMain.handle('notion:find-page-by-project-id', async (event, projectId) => {
   }
 })
 
+// Determine which Someday/Maybe database to use for a project based on folder hierarchy
+ipcMain.handle('notion:get-someday-database-for-project', async (event, projectId) => {
+  try {
+    console.log(`Determining Someday/Maybe database for project: ${projectId}`)
+    
+    const somedayDatabases = getSomedayDatabases()
+    
+    if (somedayDatabases.length === 0) {
+      return {
+        success: false,
+        error: 'No Someday/Maybe databases configured',
+        databaseId: null
+      }
+    }
+    
+    // If only one database, use it
+    if (somedayDatabases.length === 1) {
+      return {
+        success: true,
+        databaseId: somedayDatabases[0].id,
+        databaseName: somedayDatabases[0].name
+      }
+    }
+    
+    // Get project folder path
+    const folderPath = await getProjectFolderPath(projectId)
+    console.log(`Project folder path: ${folderPath}`)
+    
+    // Determine which database based on folder
+    const databaseId = determineSomedayDatabase(folderPath, somedayDatabases)
+    const selectedDb = somedayDatabases.find(db => db.id === databaseId)
+    
+    if (!databaseId || !selectedDb) {
+      // Fallback to first database
+      return {
+        success: true,
+        databaseId: somedayDatabases[0].id,
+        databaseName: somedayDatabases[0].name,
+        folderPath: folderPath
+      }
+    }
+    
+    console.log(`✅ Selected database: ${selectedDb.name} (folder: ${folderPath})`)
+    
+    return {
+      success: true,
+      databaseId: databaseId,
+      databaseName: selectedDb.name,
+      folderPath: folderPath
+    }
+  } catch (error) {
+    console.error('Error determining database for project:', error)
+    // Fallback to first available database
+    const somedayDatabases = getSomedayDatabases()
+    return {
+      success: somedayDatabases.length > 0,
+      databaseId: somedayDatabases.length > 0 ? somedayDatabases[0].id : null,
+      databaseName: somedayDatabases.length > 0 ? somedayDatabases[0].name : null,
+      error: error.message
+    }
+  }
+})
+
+// Delete/archive a Someday/Maybe item from Notion
+ipcMain.handle('notion:delete-someday-item', async (event, pageId) => {
+  try {
+    console.log(`Deleting Someday/Maybe item: ${pageId}`)
+    
+    // Check if Notion sync is configured
+    const notionToken = process.env.NOTION_TOKEN
+    
+    if (!notionToken) {
+      return {
+        success: false,
+        error: 'Notion not configured. Set NOTION_TOKEN environment variable.'
+      }
+    }
+    
+    if (!pageId) {
+      return {
+        success: false,
+        error: 'Page ID is required'
+      }
+    }
+    
+    // Import Notion client
+    const { Client } = await import('@notionhq/client')
+    const notion = new Client({ auth: notionToken })
+    
+    // Archive the page (soft delete)
+    await notion.pages.update({
+      page_id: pageId,
+      archived: true
+    })
+    
+    console.log(`✅ Successfully archived Someday/Maybe item: ${pageId}`)
+    
+    return {
+      success: true
+    }
+  } catch (error) {
+    console.error('❌ Error deleting Someday/Maybe item:', error)
+    return {
+      success: false,
+      error: error.message || 'Unknown error deleting item'
+    }
+  }
+})
+
+// Helper function to get all configured Someday/Maybe databases
+const getSomedayDatabases = () => {
+  const databases = []
+  
+  // Check for named databases (Personal, Business, etc.)
+  if (process.env.NOTION_SOMEDAY_DB_PERSONAL) {
+    databases.push({ id: process.env.NOTION_SOMEDAY_DB_PERSONAL, name: 'Personal' })
+  }
+  if (process.env.NOTION_SOMEDAY_DB_BUSINESS) {
+    databases.push({ id: process.env.NOTION_SOMEDAY_DB_BUSINESS, name: 'Business' })
+  }
+  
+  // Check for default/legacy database
+  if (process.env.NOTION_SOMEDAY_DB) {
+    // Only add default if no named databases exist (to avoid duplicates)
+    if (databases.length === 0) {
+      databases.push({ id: process.env.NOTION_SOMEDAY_DB, name: 'Default' })
+    }
+  }
+  
+  return databases
+}
+
+// Helper function to get project folder path from OmniFocus
+async function getProjectFolderPath(projectId) {
+  try {
+    const tempJxaPath = path.join(require('os').tmpdir(), 'get_project_folder_jxa.js')
+    const jxaScript = `const of = Application('OmniFocus');
+const doc = of.defaultDocument;
+const projects = doc.flattenedProjects();
+
+let targetProject = null;
+for (let i = 0; i < projects.length; i++) {
+  if (projects[i].id() === '${projectId}') {
+    targetProject = projects[i];
+    break;
+  }
+}
+
+if (!targetProject) {
+  throw new Error('Project not found');
+}
+
+// Get the folder hierarchy by traversing up the parent chain
+function getFolderPath(project) {
+  const pathParts = [];
+  
+  try {
+    // Get parent containers (folders)
+    let current = project;
+    
+    // Traverse up the parent hierarchy
+    while (current) {
+      try {
+        // Try to get containing projects (folders)
+        const containers = current.containingProjects();
+        if (containers && containers.length > 0) {
+          const container = containers[0];
+          const containerName = container.name();
+          if (containerName) {
+            pathParts.unshift(containerName);
+          }
+          current = container;
+        } else {
+          break;
+        }
+      } catch (e) {
+        // If containingProjects doesn't work or throws, try parent property
+        try {
+          const parent = current.parent();
+          if (parent && parent !== current) {
+            try {
+              const parentName = parent.name();
+              if (parentName && parentName !== current.name()) {
+                pathParts.unshift(parentName);
+              }
+              current = parent;
+            } catch (nameError) {
+              // Can't get parent name, stop traversing
+              break;
+            }
+          } else {
+            break;
+          }
+        } catch (parentError) {
+          // No parent available, stop traversing
+          break;
+        }
+      }
+      
+      // Safety check to prevent infinite loops
+      if (pathParts.length > 20) {
+        break;
+      }
+    }
+  } catch (error) {
+    // If anything fails, return empty path
+    return '';
+  }
+  
+  return pathParts.join(' > ');
+}
+
+const folderPath = getFolderPath(targetProject);
+JSON.stringify({ folderPath: folderPath || '' });`
+    
+    await fs.writeFile(tempJxaPath, jxaScript)
+    const { stdout, stderr } = await execAsync(`osascript -l JavaScript "${tempJxaPath}"`)
+    
+    // Clean up
+    try {
+      await fs.unlink(tempJxaPath)
+    } catch (cleanupError) {
+      console.warn('Failed to clean up temp file:', cleanupError.message)
+    }
+    
+    if (stderr) {
+      console.error('JXA stderr:', stderr)
+    }
+    
+    if (stdout && stdout.trim()) {
+      const result = JSON.parse(stdout.trim())
+      return result.folderPath || ''
+    }
+    
+    return ''
+  } catch (error) {
+    console.error('Error getting project folder path:', error)
+    return ''
+  }
+}
+
+// Helper function to determine which database to use based on project folder
+function determineSomedayDatabase(folderPath, somedayDatabases) {
+  if (!folderPath || somedayDatabases.length === 0) {
+    return null
+  }
+  
+  // Check if project is in "Business Ventures & Career" or any of its subfolders
+  const businessFolderName = 'Business Ventures & Career'
+  const isBusiness = folderPath.toLowerCase().includes(businessFolderName.toLowerCase())
+  
+  if (isBusiness) {
+    // Find Business database
+    const businessDb = somedayDatabases.find(db => db.name.toLowerCase() === 'business')
+    if (businessDb) {
+      return businessDb.id
+    }
+  }
+  
+  // Default to Personal database (or first available if no Personal)
+  const personalDb = somedayDatabases.find(db => db.name.toLowerCase() === 'personal')
+  if (personalDb) {
+    return personalDb.id
+  }
+  
+  // Fallback to first database
+  return somedayDatabases.length > 0 ? somedayDatabases[0].id : null
+}
+
+// Get all items from Someday/Maybe database
+ipcMain.handle('notion:get-someday-items', async (event, databaseId = null) => {
+  try {
+    console.log('Querying Someday/Maybe database...', { databaseId })
+    
+    // Check if Notion sync is configured
+    const notionToken = process.env.NOTION_TOKEN
+    
+    if (!notionToken) {
+      console.log('⏭️ Notion not configured')
+      return {
+        success: false,
+        error: 'Notion not configured. Set NOTION_TOKEN environment variable.',
+        items: []
+      }
+    }
+    
+    // Determine which database to use
+    let somedayDb = databaseId
+    
+    if (!somedayDb) {
+      // If no database ID provided, use first available
+      const databases = getSomedayDatabases()
+      if (databases.length === 0) {
+        return {
+          success: false,
+          error: 'No Someday/Maybe database configured. Set NOTION_SOMEDAY_DB, NOTION_SOMEDAY_DB_PERSONAL, or NOTION_SOMEDAY_DB_BUSINESS environment variables.',
+          items: []
+        }
+      }
+      somedayDb = databases[0].id
+      console.log(`Using first available database: ${databases[0].name}`)
+    }
+    
+    // Import Notion client
+    const { Client } = await import('@notionhq/client')
+    const notion = new Client({ auth: notionToken })
+    
+    // Query all items from Someday/Maybe database
+    const items = []
+    let hasMore = true
+    let startCursor = undefined
+    
+    while (hasMore) {
+      const response = await notion.databases.query({
+        database_id: somedayDb,
+        start_cursor: startCursor,
+        page_size: 100
+      })
+      
+      for (const page of response.results) {
+        const props = page.properties
+        
+        // Extract properties (assuming similar structure to Active Projects)
+        const name = props.Name?.title?.[0]?.plain_text || 'Untitled'
+        const ofId = props['OF-ID']?.rich_text?.[0]?.plain_text || null
+        const note = props.Note?.rich_text?.[0]?.plain_text || ''
+        
+        items.push({
+          pageId: page.id,
+          name: name,
+          ofId: ofId,
+          note: note,
+          createdAt: page.created_time,
+          lastEditedAt: page.last_edited_time
+        })
+      }
+      
+      hasMore = response.has_more
+      startCursor = response.next_cursor
+    }
+    
+    console.log(`✅ Retrieved ${items.length} items from Someday/Maybe database`)
+    
+    return {
+      success: true,
+      items: items
+    }
+  } catch (error) {
+    console.error('❌ Error querying Someday/Maybe database:', error)
+    return {
+      success: false,
+      error: error.message || 'Unknown error querying Someday/Maybe database',
+      items: []
+    }
+  }
+})
+
 ipcMain.handle('notion:is-configured', async () => {
   try {
     const notionToken = process.env.NOTION_TOKEN
@@ -1634,18 +2059,23 @@ ipcMain.handle('notion:is-configured', async () => {
     const archiveDb = process.env.NOTION_ARCHIVE_DB
     const somedayDb = process.env.NOTION_SOMEDAY_DB
     
+    // Get all configured Someday/Maybe databases
+    const somedayDatabases = getSomedayDatabases()
+    
     console.log('[notion:is-configured] Checking environment variables:')
     console.log(`  NOTION_TOKEN: ${notionToken ? 'Set' : 'Not set'}`)
     console.log(`  NOTION_PROJECT_DB: ${notionDb ? 'Set' : 'Not set'}`)
     console.log(`  NOTION_ARCHIVE_DB: ${archiveDb ? archiveDb : 'Not set'}`)
     console.log(`  NOTION_SOMEDAY_DB: ${somedayDb ? somedayDb : 'Not set'}`)
+    console.log(`  Someday/Maybe databases: ${somedayDatabases.length}`)
     
     return {
       configured: !!(notionToken && notionDb),
       hasToken: !!notionToken,
       hasDatabase: !!notionDb,
       archiveDb: archiveDb || null,
-      somedayDb: somedayDb || null
+      somedayDb: somedayDb || null, // Legacy support
+      somedayDatabases: somedayDatabases // Array of { id, name } objects
     }
   } catch (error) {
     console.error('Error checking Notion configuration:', error)

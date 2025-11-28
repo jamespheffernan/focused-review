@@ -131,7 +131,7 @@ const generateContextAwareQuestions = async (project: ProjectDTO): Promise<Quest
   }
 }
 
-type Route = { name:'queue' } | { name:'focus', idx:number } | { name:'summary' } | { name:'questions' }
+type Route = { name:'queue' } | { name:'focus', idx:number } | { name:'summary' } | { name:'questions' } | { name:'somedayReview' }
 
 type State = {
   route: Route
@@ -157,6 +157,7 @@ type State = {
   gotoSummary: () => void
   gotoQuestions: () => void
   gotoQueue: () => void
+  gotoSomedayReview: () => void
   loadProjectQuestions: (project: ProjectDTO) => Promise<void>
   toggleCalendar: () => void
 }
@@ -496,70 +497,79 @@ export const useApp = create<State>((set, get) => ({
     
     // Move Notion page to Someday/Maybe database (background)
     if (window.electronAPI?.notion) {
-      console.log('🔄 Checking Notion configuration...')
+      console.log('🔄 Determining Someday/Maybe database based on project folder...')
       const notionApi = window.electronAPI.notion
-      // Get someday database ID from main process
-      notionApi.isConfigured().then(async config => {
-        console.log('✅ Notion config received:', config)
-        if (config.somedayDb) {
-          console.log(`🔄 Moving to Someday/Maybe database: ${config.somedayDb}`)
-          
-          try {
-            // Step 1: Fetch tasks from IndexedDB for this project
-            console.log('📋 Fetching tasks for project...')
-            const { db } = await import('./db')
-            const projectTasks = await db.tasks
-              .where('projectId')
-              .equals(project.id)
-              .toArray()
-            
-            console.log(`📋 Found ${projectTasks.length} tasks for project`)
-            
-            // Step 2: Find the Notion page ID for this project
-            console.log('🔍 Finding Notion page for project...')
-            // const pageResult = await notionApi.findPageByProjectId(project.id)
-            // const pageId = pageResult.success ? pageResult.pageId : null
-            const pageId = null // Temporarily disabled
-            
-            if (pageId && projectTasks.length > 0) {
-              // Step 3: Append tasks log to the Notion page
-              console.log('📝 Appending tasks log to Notion page...')
-              // const tasksLogResult = await notionApi.appendTasksLog(pageId, projectTasks.map(task => ({
-              //   name: task.name,
-              //   dueDate: task.dueDate,
-              //   context: task.context,
-              //   completed: task.completed
-              // })))
-              
-              // if (tasksLogResult.success) {
-              //   console.log('✅ Tasks log appended successfully')
-              // } else {
-              //   console.error('❌ Failed to append tasks log:', tasksLogResult.error)
-              // }
-            } else if (!pageId) {
-              console.log('⏭️ No Notion page found for project, skipping tasks log')
-            } else {
-              console.log('⏭️ No tasks found for project, skipping tasks log')
-            }
-            
-            // Step 4: Move to someday/maybe database (this will copy all content including the tasks log)
-            console.log('🔄 Moving page to Someday/Maybe database...')
-            const moveResult = await notionApi.moveToDatabase(project.id, config.somedayDb, {
-              ofId: project.id,
-              name: project.name,
-              status: 'dropped status'
-            })
-            
-            console.log('✅ Move to Someday/Maybe result:', moveResult)
-          } catch (error) {
-            console.error('❌ Move to Someday/Maybe failed:', error)
+      
+      // Determine which database to use based on project folder hierarchy
+      notionApi.getSomedayDatabaseForProject(project.id).then(async result => {
+        console.log('✅ Database determination result:', result)
+        
+        if (!result.success || !result.databaseId) {
+          console.log('⏭️ Could not determine Someday/Maybe database, skipping')
+          if (result.error) {
+            console.error('   Error:', result.error)
           }
-        } else {
-          console.log('⏭️ Notion someday/maybe not configured, skipping')
-          console.log('   config.somedayDb =', config.somedayDb)
+          return
+        }
+        
+        const targetDatabaseId = result.databaseId
+        const databaseName = result.databaseName || 'Unknown'
+        const folderPath = result.folderPath || 'Unknown folder'
+        
+        console.log(`🔄 Moving to ${databaseName} Someday/Maybe database (folder: ${folderPath}): ${targetDatabaseId}`)
+        
+        try {
+          // Step 1: Fetch tasks from IndexedDB for this project
+          console.log('📋 Fetching tasks for project...')
+          const { db } = await import('./db')
+          const projectTasks = await db.tasks
+            .where('projectId')
+            .equals(project.id)
+            .toArray()
+          
+          console.log(`📋 Found ${projectTasks.length} tasks for project`)
+          
+          // Step 2: Find the Notion page ID for this project
+          console.log('🔍 Finding Notion page for project...')
+          // const pageResult = await notionApi.findPageByProjectId(project.id)
+          // const pageId = pageResult.success ? pageResult.pageId : null
+          const pageId = null // Temporarily disabled
+          
+          if (pageId && projectTasks.length > 0) {
+            // Step 3: Append tasks log to the Notion page
+            console.log('📝 Appending tasks log to Notion page...')
+            // const tasksLogResult = await notionApi.appendTasksLog(pageId, projectTasks.map(task => ({
+            //   name: task.name,
+            //   dueDate: task.dueDate,
+            //   context: task.context,
+            //   completed: task.completed
+            // })))
+            
+            // if (tasksLogResult.success) {
+            //   console.log('✅ Tasks log appended successfully')
+            // } else {
+            //   console.error('❌ Failed to append tasks log:', tasksLogResult.error)
+            // }
+          } else if (!pageId) {
+            console.log('⏭️ No Notion page found for project, skipping tasks log')
+          } else {
+            console.log('⏭️ No tasks found for project, skipping tasks log')
+          }
+          
+          // Step 4: Move to someday/maybe database (this will copy all content including the tasks log)
+          console.log(`🔄 Moving page to ${databaseName} Someday/Maybe database...`)
+          const moveResult = await notionApi.moveToDatabase(project.id, targetDatabaseId, {
+            ofId: project.id,
+            name: project.name,
+            status: 'dropped status'
+          })
+          
+          console.log(`✅ Move to ${databaseName} Someday/Maybe result:`, moveResult)
+        } catch (error) {
+          console.error('❌ Move to Someday/Maybe failed:', error)
         }
       }).catch(error => {
-        console.error('❌ Get Notion config failed:', error)
+        console.error('❌ Get Someday/Maybe database for project failed:', error)
       })
     } else {
       console.log('⚠️ No Notion API available')
@@ -593,6 +603,8 @@ export const useApp = create<State>((set, get) => ({
   },
   
   gotoQueue: () => set({ route: { name:'queue' } }),
+  
+  gotoSomedayReview: () => set({ route: { name:'somedayReview' } }),
   
   toggleCalendar: () => {
     set({ calendarVisible: !get().calendarVisible })

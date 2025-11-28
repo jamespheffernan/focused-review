@@ -12,6 +12,8 @@ export interface ElectronAPI {
     dropProject: (projectId: string) => Promise<{ success: boolean; projectId?: string; status?: string; error?: string }>
     createTask: (projectId: string, taskName: string) => Promise<{ success: boolean; taskId?: string; taskName?: string; error?: string }>
     createInboxTask: (taskName: string) => Promise<{ success: boolean; taskId?: string; taskName?: string; error?: string }>
+    createProject: (projectName: string, firstTaskName: string, taskUpdates?: { tags?: string[]; dueDate?: string; deferDate?: string }) => Promise<{ success: boolean; projectId?: string; projectName?: string; taskId?: string; taskName?: string; error?: string }>
+    createProjectWithTask: (projectName: string, firstTaskName: string, taskUpdates?: { tags?: string[]; dueDate?: string; deferDate?: string }) => Promise<{ success: boolean; projectId?: string; projectName?: string; taskId?: string; taskName?: string; error?: string }>
     setTaskContext: (taskId: string, contextName: string) => Promise<{ success: boolean; taskId?: string; contextName?: string; error?: string }>
     setTaskTags: (taskId: string, tags: string[]) => Promise<{ success: boolean; taskId?: string; tags?: string[]; error?: string }>
     setTaskDueDate: (taskId: string, dueDate: string | null) => Promise<{ success: boolean; taskId?: string; dueDate?: string | null; error?: string }>
@@ -46,6 +48,7 @@ export interface ElectronAPI {
       hasDatabase?: boolean
       archiveDb?: string | null
       somedayDb?: string | null
+      somedayDatabases?: Array<{ id: string; name: string }>
       error?: string
     }>
     moveToDatabase: (ofProjectId: string, targetDatabaseId: string, projectData?: {
@@ -57,6 +60,29 @@ export interface ElectronAPI {
       oldPageId?: string
       newPageId?: string
       message?: string
+      error?: string
+    }>
+    getSomedayItems: (databaseId?: string | null) => Promise<{
+      success: boolean
+      items?: Array<{
+        pageId: string
+        name: string
+        ofId: string | null
+        note: string
+        createdAt: string
+        lastEditedAt: string
+      }>
+      error?: string
+    }>
+    deleteSomedayItem: (pageId: string) => Promise<{
+      success: boolean
+      error?: string
+    }>
+    getSomedayDatabaseForProject: (projectId: string) => Promise<{
+      success: boolean
+      databaseId: string | null
+      databaseName?: string | null
+      folderPath?: string
       error?: string
     }>
   }

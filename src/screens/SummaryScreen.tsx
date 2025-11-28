@@ -5,12 +5,12 @@ import { getCommitmentsForWeek } from '../repos/timelineCommitmentsRepo'
 import { exportCalendarAsPNG } from '../utils/calendar-export'
 import CalendarGanttChart from '../components/CalendarGanttChart'
 import type { TimelineCommitmentDTO } from '../types'
-import { Calendar, Download, Trash2 } from 'lucide-react'
+import { Calendar, Download, Trash2, Sparkles } from 'lucide-react'
 import { clearWeekReview } from '../services/week-clearer'
 import { useApp } from '../store'
 
 export default function SummaryScreen() {
-  const { gotoQueue } = useApp()
+  const { gotoQueue, gotoSomedayReview } = useApp()
   const [sessionStats, setSessionStats] = useState({
     projectsReviewed: 0,
     projectsSkipped: 0,
@@ -164,8 +164,36 @@ export default function SummaryScreen() {
             display: 'flex', 
             justifyContent: 'center', 
             gap: '16px',
-            marginTop: '24px'
+            marginTop: '24px',
+            flexWrap: 'wrap'
           }}>
+            <button
+              onClick={gotoSomedayReview}
+              style={{
+                background: 'rgba(255, 193, 7, 0.2)',
+                border: '1px solid rgba(255, 193, 7, 0.4)',
+                borderRadius: '8px',
+                color: '#FFC107',
+                padding: '12px 24px',
+                fontSize: '0.95em',
+                fontWeight: '500',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                transition: 'all 0.2s ease'
+              }}
+              title="Review items from your Someday/Maybe list"
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(255, 193, 7, 0.3)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(255, 193, 7, 0.2)'
+              }}
+            >
+              <Sparkles size={18} />
+              Review Someday/Maybe
+            </button>
             <button
               onClick={handleClearWeek}
               disabled={clearing}

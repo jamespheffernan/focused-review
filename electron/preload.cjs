@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     dropProject: (projectId) => ipcRenderer.invoke('omnifocus:drop-project', projectId),
     createTask: (projectId, taskName) => ipcRenderer.invoke('omnifocus:create-task', projectId, taskName),
     createInboxTask: (taskName) => ipcRenderer.invoke('omnifocus:create-inbox-task', taskName),
+    createProject: (projectName, firstTaskName) => ipcRenderer.invoke('omnifocus:create-project', projectName, firstTaskName),
+    createProjectWithTask: (projectName, firstTaskName, taskUpdates) => ipcRenderer.invoke('omnifocus:create-project', projectName, firstTaskName, taskUpdates),
     setTaskContext: (taskId, contextName) => ipcRenderer.invoke('omnifocus:set-task-context', taskId, contextName),
     setTaskDueDate: (taskId, dueDate) => ipcRenderer.invoke('omnifocus:set-task-due-date', taskId, dueDate),
     setTaskTags: (taskId, tags) => ipcRenderer.invoke('omnifocus:set-task-tags', taskId, tags),
@@ -43,7 +45,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     isConfigured: () => ipcRenderer.invoke('notion:is-configured'),
     moveToDatabase: (pageId, targetDatabaseId, projectData) => ipcRenderer.invoke('notion:move-to-database', pageId, targetDatabaseId, projectData),
     appendTasksLog: (pageId, tasks) => ipcRenderer.invoke('notion:append-tasks-log', pageId, tasks),
-    findPageByProjectId: (projectId) => ipcRenderer.invoke('notion:find-page-by-project-id', projectId)
+    findPageByProjectId: (projectId) => ipcRenderer.invoke('notion:find-page-by-project-id', projectId),
+    getSomedayItems: (databaseId) => ipcRenderer.invoke('notion:get-someday-items', databaseId),
+    deleteSomedayItem: (pageId) => ipcRenderer.invoke('notion:delete-someday-item', pageId),
+    getSomedayDatabaseForProject: (projectId) => ipcRenderer.invoke('notion:get-someday-database-for-project', projectId)
   },
   
   // Platform info

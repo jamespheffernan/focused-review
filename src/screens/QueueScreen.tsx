@@ -3,7 +3,7 @@ import { useApp } from '../store'
 import { getOmniFocusIntegrationStatus } from '../repos/projectsRepo'
 import { getTaskStatisticsBatch } from '../repos/tasksRepo'
 import { syncManager } from '../services/syncManager'
-import { RefreshCw, Info, AlertTriangle, ClipboardList, CheckCircle2, Ban, Settings } from 'lucide-react'
+import { RefreshCw, Info, AlertTriangle, ClipboardList, CheckCircle2, Ban, Settings, Sparkles } from 'lucide-react'
 import ThemeSelector from '../components/ThemeSelector'
 import { themeManager } from '../services/themeManager'
 import { DataSourceBanner } from '../components/DataSourceBanner'
@@ -12,7 +12,7 @@ import * as Answers from '../repos/answersRepo'
 import { getStartOfISOWeek } from '../services/review-formatter'
 
 export default function QueueScreen() {
-  const { queue, start, syncFromOmniFocus, gotoQuestions } = useApp()
+  const { queue, start, syncFromOmniFocus, gotoQuestions, gotoSomedayReview } = useApp()
   const [sel, setSel] = useState<Set<string>>(new Set())
   const [weeklyReview, setWeeklyReview] = useState<{ state: string } | null>(null)
   const [reviewedProjects, setReviewedProjects] = useState<Set<string>>(new Set())
@@ -181,6 +181,26 @@ export default function QueueScreen() {
           
           <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
             <ThemeSelector />
+            
+            <button
+              onClick={gotoSomedayReview}
+              style={{
+                background: 'rgba(255, 193, 7, 0.2)',
+                color: '#FFC107',
+                border: '1px solid rgba(255, 193, 7, 0.4)',
+                borderRadius: '8px',
+                padding: '8px 16px',
+                cursor: 'pointer',
+                fontSize: '0.9em',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                transition: 'all 0.2s ease'
+              }}
+              title="Review Someday/Maybe items"
+            >
+              <Sparkles size={16} />
+            </button>
             
             <button
               onClick={gotoQuestions}
