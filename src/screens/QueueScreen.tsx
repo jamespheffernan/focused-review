@@ -3,7 +3,7 @@ import { useApp } from '../store'
 import { getOmniFocusIntegrationStatus } from '../repos/projectsRepo'
 import { getTaskStatisticsBatch } from '../repos/tasksRepo'
 import { syncManager } from '../services/syncManager'
-import { RefreshCw, Info, AlertTriangle, ClipboardList, CheckCircle2, Ban, Settings, Sparkles } from 'lucide-react'
+import { RefreshCw, Info, AlertTriangle, ClipboardList, CheckCircle2, Ban, Settings, Sparkles, List } from 'lucide-react'
 import ThemeSelector from '../components/ThemeSelector'
 import { themeManager } from '../services/themeManager'
 import { DataSourceBanner } from '../components/DataSourceBanner'
@@ -12,7 +12,7 @@ import * as Answers from '../repos/answersRepo'
 import { getStartOfISOWeek } from '../services/review-formatter'
 
 export default function QueueScreen() {
-  const { queue, start, syncFromOmniFocus, gotoQuestions, gotoSomedayReview } = useApp()
+  const { queue, start, syncFromOmniFocus, gotoQuestions, gotoSomedayReview, gotoLists } = useApp()
   const [sel, setSel] = useState<Set<string>>(new Set())
   const [weeklyReview, setWeeklyReview] = useState<{ state: string } | null>(null)
   const [reviewedProjects, setReviewedProjects] = useState<Set<string>>(new Set())
@@ -131,12 +131,19 @@ export default function QueueScreen() {
   return (
     <>
       <div className="page">
-        <h1 style={{ 
-          fontSize: '3em', 
-          fontWeight: '700', 
-          textAlign: 'center', 
-          marginBottom: '40px',
-          textShadow: '0 2px 4px rgba(0, 0, 0, 0.1)'
+        <h1 style={{
+          fontSize: 'var(--font-size-hero)',
+          fontWeight: 'var(--font-weight-bold)',
+          textAlign: 'center',
+          marginBottom: 'var(--space-12)',
+          textShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+          fontFamily: 'var(--font-display)',
+          letterSpacing: '-0.03em',
+          lineHeight: 'var(--line-height-tight)',
+          background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.8) 100%)',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+          backgroundClip: 'text'
         }}>
           Blinders
         </h1>
@@ -181,26 +188,6 @@ export default function QueueScreen() {
           
           <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
             <ThemeSelector />
-            
-            <button
-              onClick={gotoSomedayReview}
-              style={{
-                background: 'rgba(255, 193, 7, 0.2)',
-                color: '#FFC107',
-                border: '1px solid rgba(255, 193, 7, 0.4)',
-                borderRadius: '8px',
-                padding: '8px 16px',
-                cursor: 'pointer',
-                fontSize: '0.9em',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                transition: 'all 0.2s ease'
-              }}
-              title="Review Someday/Maybe items"
-            >
-              <Sparkles size={16} />
-            </button>
             
             <button
               onClick={gotoQuestions}
@@ -417,8 +404,8 @@ export default function QueueScreen() {
       </div>
     </div>
     
-    {/* Sticky button - OUTSIDE .page div so it's truly fixed to viewport */}
-    <div className="actions sticky-actions">
+    {/* Sticky buttons - OUTSIDE .page div so it's truly fixed to viewport */}
+    <div className="actions sticky-actions" style={{ flexDirection: 'column', gap: '12px' }}>
       <button 
         className="primary" 
         onClick={() => start(ids.length ? ids : queue.map(p=>p.id))}
@@ -426,6 +413,44 @@ export default function QueueScreen() {
       >
         {weeklyReview?.state === 'in_progress' ? 'Resume Weekly Review' : 'Start Weekly Review'} ({ids.length || queue.length} projects)
       </button>
+      
+      <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'center' }}>
+        <button
+          onClick={gotoSomedayReview}
+          className="primary"
+          style={{
+            background: 'var(--color-amber-glow)',
+            borderColor: 'var(--color-amber-glow)',
+            fontSize: 'var(--font-size-body)',
+            padding: 'var(--space-3) var(--space-6)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--space-2)',
+            boxShadow: 'var(--shadow-subtle), var(--glow-amber)'
+          }}
+        >
+          <Sparkles size={18} />
+          Someday Maybe Review
+        </button>
+
+        <button
+          onClick={gotoLists}
+          className="primary"
+          style={{
+            background: 'var(--color-soft-coral)',
+            borderColor: 'var(--color-soft-coral)',
+            fontSize: 'var(--font-size-body)',
+            padding: 'var(--space-3) var(--space-6)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--space-2)',
+            boxShadow: 'var(--shadow-subtle), var(--glow-coral)'
+          }}
+        >
+          <List size={18} />
+          List Manager
+        </button>
+      </div>
     </div>
     </>
   )

@@ -1,7 +1,7 @@
 /**
- * DESIGN TOKENS
+ * DESIGN TOKENS - TWILIGHT FOCUS CHAMBER
  * Single source of truth for all design decisions
- * Every pixel matters. Every value has purpose.
+ * A sanctuary for deep reflection work
  */
 
 :root {
@@ -19,15 +19,15 @@
   --space-16: 64px;
 
   /* ============================================
-     TYPOGRAPHY
-     SF Pro / Inter font family with proper weights
-     Type scale: 12, 14, 16, 20, 24, 32, 48
+     TYPOGRAPHY - Distinctive, Warm, Focused
+     Fraunces (display serif) + Manrope (body sans) + JetBrains Mono
+     Type scale: 12, 14, 16, 20, 24, 32, 48, 64
      ============================================ */
 
   /* Font Families */
-  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', 'Segoe UI', system-ui, sans-serif;
-  --font-body: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Segoe UI', system-ui, sans-serif;
-  --font-mono: 'SF Mono', 'Consolas', 'Monaco', monospace;
+  --font-display: 'Fraunces', 'Georgia', 'Times New Roman', serif;
+  --font-body: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Consolas', 'Monaco', monospace;
 
   /* Font Weights */
   --font-weight-regular: 400;
@@ -43,6 +43,7 @@
   --font-size-heading: 24px;
   --font-size-title: 32px;
   --font-size-display: 48px;
+  --font-size-hero: 64px;
 
   /* Line Heights */
   --line-height-tight: 1.2;
@@ -126,150 +127,77 @@
   --button-height-large: 56px;
 
   /* ============================================
-     SEMANTIC COLORS - LIGHT THEME
-     Will be overridden by dark theme
+     TWILIGHT FOCUS CHAMBER - Color Palette
+     Deep midnight blues with warm accents
      ============================================ */
 
-  /* Action/Primary Colors */
-  --color-action: #007AFF;
-  --color-action-hover: #0051D5;
-  --color-action-pressed: #003D99;
-  --color-action-disabled: #B3D7FF;
+  /* Background - Twilight Gradient */
+  --background-gradient: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+  --background-gradient-overlay: linear-gradient(180deg, rgba(26, 26, 46, 0.95) 0%, rgba(15, 52, 96, 0.95) 100%);
 
-  /* Danger/Destructive */
-  --color-danger: #FF3B30;
-  --color-danger-hover: #D62D22;
-  --color-danger-pressed: #B31F16;
+  /* Accent Colors - Warm & Purposeful */
+  --color-amber-glow: #f59e0b;
+  --color-amber-glow-hover: #fbbf24;
+  --color-amber-glow-subtle: rgba(245, 158, 11, 0.3);
 
-  /* Warning */
-  --color-warning: #FF9500;
-  --color-warning-hover: #CC7700;
+  --color-sage-focus: #10b981;
+  --color-sage-focus-hover: #34d399;
+  --color-sage-focus-subtle: rgba(16, 185, 129, 0.3);
 
-  /* Success */
-  --color-success: #34C759;
-  --color-success-hover: #2A9F47;
+  --color-soft-coral: #f472b6;
+  --color-soft-coral-hover: #f9a8d4;
+  --color-soft-coral-subtle: rgba(244, 114, 182, 0.3);
 
-  /* Neutral/Secondary */
-  --color-neutral: #8E8E93;
-  --color-neutral-hover: #6C6C70;
+  --color-cool-cyan: #06b6d4;
+  --color-cool-cyan-hover: #22d3ee;
+  --color-cool-cyan-subtle: rgba(6, 182, 212, 0.3);
 
-  /* Text Colors */
-  --color-text-primary: rgba(0, 0, 0, 0.9);
-  --color-text-secondary: rgba(0, 0, 0, 0.6);
-  --color-text-tertiary: rgba(0, 0, 0, 0.4);
-  --color-text-inverse: rgba(255, 255, 255, 0.95);
+  /* Legacy Color Mappings for Compatibility */
+  --color-action: var(--color-cool-cyan);
+  --color-action-hover: var(--color-cool-cyan-hover);
+  --color-action-pressed: #0891b2;
+  --color-action-disabled: rgba(6, 182, 212, 0.3);
 
-  /* Surface Colors */
-  --color-surface-base: #FFFFFF;
-  --color-surface-elevated: #F9F9F9;
-  --color-surface-overlay: rgba(255, 255, 255, 0.95);
+  --color-danger: #ef4444;
+  --color-danger-hover: #f87171;
+  --color-danger-pressed: #dc2626;
 
-  /* Border Colors */
-  --color-border-subtle: rgba(0, 0, 0, 0.08);
-  --color-border-medium: rgba(0, 0, 0, 0.15);
-  --color-border-strong: rgba(0, 0, 0, 0.3);
+  --color-warning: var(--color-amber-glow);
+  --color-warning-hover: var(--color-amber-glow-hover);
 
-  /* Background Gradient (for themed backgrounds) */
-  --background-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-}
+  --color-success: var(--color-sage-focus);
+  --color-success-hover: var(--color-sage-focus-hover);
 
-/* ============================================
-   DARK THEME
-   Overrides light theme colors
-   ============================================ */
-[data-theme="dark"] {
-  /* Action/Primary Colors - slightly brighter for dark bg */
-  --color-action: #0A84FF;
-  --color-action-hover: #409CFF;
-  --color-action-pressed: #0051D5;
-  --color-action-disabled: #003D99;
+  --color-neutral: #94a3b8;
+  --color-neutral-hover: #cbd5e1;
 
-  /* Danger */
-  --color-danger: #FF453A;
-  --color-danger-hover: #FF6961;
-  --color-danger-pressed: #D62D22;
-
-  /* Warning */
-  --color-warning: #FF9F0A;
-  --color-warning-hover: #FFB340;
-
-  /* Success */
-  --color-success: #32D74B;
-  --color-success-hover: #64DE75;
-
-  /* Neutral */
-  --color-neutral: #98989D;
-  --color-neutral-hover: #AEAEB2;
-
-  /* Text Colors */
+  /* Text Colors - Always light on dark */
   --color-text-primary: rgba(255, 255, 255, 0.95);
-  --color-text-secondary: rgba(255, 255, 255, 0.6);
-  --color-text-tertiary: rgba(255, 255, 255, 0.4);
-  --color-text-inverse: rgba(0, 0, 0, 0.9);
+  --color-text-secondary: rgba(255, 255, 255, 0.7);
+  --color-text-tertiary: rgba(255, 255, 255, 0.5);
+  --color-text-inverse: rgba(26, 26, 46, 0.95);
 
-  /* Surface Colors */
-  --color-surface-base: #000000;
-  --color-surface-elevated: #1C1C1E;
-  --color-surface-overlay: rgba(28, 28, 30, 0.95);
+  /* Surface Colors - Warm white glassmorphism */
+  --color-surface-base: rgba(245, 245, 250, 0.08);
+  --color-surface-elevated: rgba(245, 245, 250, 0.12);
+  --color-surface-overlay: rgba(245, 245, 250, 0.15);
 
   /* Border Colors */
-  --color-border-subtle: rgba(255, 255, 255, 0.08);
-  --color-border-medium: rgba(255, 255, 255, 0.15);
-  --color-border-strong: rgba(255, 255, 255, 0.3);
+  --color-border-subtle: rgba(245, 245, 250, 0.1);
+  --color-border-medium: rgba(245, 245, 250, 0.2);
+  --color-border-strong: rgba(245, 245, 250, 0.3);
 
-  /* Background Gradient */
-  --background-gradient: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  /* Glow Effects */
+  --glow-amber: 0 0 24px rgba(245, 158, 11, 0.4);
+  --glow-sage: 0 0 24px rgba(16, 185, 129, 0.4);
+  --glow-coral: 0 0 24px rgba(244, 114, 182, 0.4);
+  --glow-cyan: 0 0 24px rgba(6, 182, 212, 0.4);
 }
 
 /* ============================================
-   AUTO THEME
-   Follows system preference
+   TWILIGHT FOCUS CHAMBER - Always Active
+   This is a single, purposeful aesthetic - no theme switching
    ============================================ */
-@media (prefers-color-scheme: dark) {
-  [data-theme="auto"] {
-    /* Action/Primary Colors */
-    --color-action: #0A84FF;
-    --color-action-hover: #409CFF;
-    --color-action-pressed: #0051D5;
-    --color-action-disabled: #003D99;
-
-    /* Danger */
-    --color-danger: #FF453A;
-    --color-danger-hover: #FF6961;
-    --color-danger-pressed: #D62D22;
-
-    /* Warning */
-    --color-warning: #FF9F0A;
-    --color-warning-hover: #FFB340;
-
-    /* Success */
-    --color-success: #32D74B;
-    --color-success-hover: #64DE75;
-
-    /* Neutral */
-    --color-neutral: #98989D;
-    --color-neutral-hover: #AEAEB2;
-
-    /* Text Colors */
-    --color-text-primary: rgba(255, 255, 255, 0.95);
-    --color-text-secondary: rgba(255, 255, 255, 0.6);
-    --color-text-tertiary: rgba(255, 255, 255, 0.4);
-    --color-text-inverse: rgba(0, 0, 0, 0.9);
-
-    /* Surface Colors */
-    --color-surface-base: #000000;
-    --color-surface-elevated: #1C1C1E;
-    --color-surface-overlay: rgba(28, 28, 30, 0.95);
-
-    /* Border Colors */
-    --color-border-subtle: rgba(255, 255, 255, 0.08);
-    --color-border-medium: rgba(255, 255, 255, 0.15);
-    --color-border-strong: rgba(255, 255, 255, 0.3);
-
-    /* Background Gradient */
-    --background-gradient: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-  }
-}
 
 /**
  * USAGE PHILOSOPHY

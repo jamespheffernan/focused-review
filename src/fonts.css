@@ -1,3 +1,18 @@
+/**
+ * TWILIGHT FOCUS CHAMBER - Typography
+ * Distinctive fonts for a memorable experience
+ */
+
+/* Fraunces - Elegant display serif with optical sizes */
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&display=swap');
+
+/* Manrope - Warm, rounded sans-serif for body text */
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap');
+
+/* JetBrains Mono - Clean monospace for data/technical elements */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+/* Legacy Electrolize for fallback */
 @font-face {
   font-family: 'Electrolize';
   src: url('./assets/Electrolize-Regular.ttf') format('truetype');

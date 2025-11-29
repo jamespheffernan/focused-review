@@ -1066,23 +1066,19 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
                 onClick={() => {
                   setSelectedMood(1)
                   handleEngagementChange(1)
-                  // handleEngagementChange now handles auto-advance
                 }}
-                title="Not feeling it"
+                title="Low energy - Needs attention"
               >
-                😔
-                <span className="mood-label">Low</span>
+                <span className="mood-label">Low Energy</span>
               </button>
               <button
                 className={`mood-button ${selectedMood === 2 ? 'selected' : ''}`}
                 onClick={() => {
                   setSelectedMood(2)
                   handleEngagementChange(2)
-                  // handleEngagementChange now handles auto-advance
                 }}
-                title="Neutral"
+                title="Neutral - Steady progress"
               >
-                😐
                 <span className="mood-label">Neutral</span>
               </button>
               <button
@@ -1090,12 +1086,10 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
                 onClick={() => {
                   setSelectedMood(3)
                   handleEngagementChange(3)
-                  // handleEngagementChange now handles auto-advance
                 }}
-                title="Feeling good"
+                title="High energy - Motivated and engaged"
               >
-                😊
-                <span className="mood-label">High</span>
+                <span className="mood-label">High Energy</span>
               </button>
             </div>
           </div>

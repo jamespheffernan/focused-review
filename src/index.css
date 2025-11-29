@@ -1,35 +1,92 @@
-:root { 
-  font-family: 'Electrolize', 'Arial', 'Helvetica', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
-  color: white;
-  /* Default theme variables - will be overridden by themeManager */
-  --gradient: linear-gradient(135deg, #00ff88 0%, #00d4aa 50%, #0099cc 100%);
-  --accent: #00d4aa;
-  --primary: #00d4aa;
-  --primary-hover: #00e6bb;
-  --secondary: #0099cc;
-  --secondary-hover: #00aae6;
-  --success: #00ff88;
-  --success-hover: #33ff9f;
-  --warning: #ffc107;
-  --warning-hover: #ffcd38;
-  --danger: #ff6b6b;
-  --danger-hover: #ff8787;
-  background: var(--gradient);
+/**
+ * TWILIGHT FOCUS CHAMBER - Global Styles
+ * Deep reflection environment
+ */
+
+:root {
+  font-family: var(--font-body);
+  color: var(--color-text-primary);
+
+  /* Legacy theme variables for compatibility */
+  --gradient: var(--background-gradient);
+  --accent: var(--color-cool-cyan);
+  --primary: var(--color-cool-cyan);
+  --primary-hover: var(--color-cool-cyan-hover);
+  --secondary: var(--color-amber-glow);
+  --secondary-hover: var(--color-amber-glow-hover);
+  --success: var(--color-sage-focus);
+  --success-hover: var(--color-sage-focus-hover);
+  --warning: var(--color-amber-glow);
+  --warning-hover: var(--color-amber-glow-hover);
+  --danger: var(--color-danger);
+  --danger-hover: var(--color-danger-hover);
+  background: var(--background-gradient);
 }
 
-/* Reset button fonts to use the same as body */
+/* Global font inheritance */
 *,
 *::before,
 *::after {
   font-family: inherit;
+  box-sizing: border-box;
 }
 
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background: var(--gradient);
-  font-family: 'Electrolize', 'Arial', 'Helvetica', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--background-gradient);
+  background-attachment: fixed;
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-regular);
+  line-height: var(--line-height-normal);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  position: relative;
+  overflow-x: hidden;
+}
+
+/* Subtle animated background overlay */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background:
+    radial-gradient(circle at 20% 50%, rgba(6, 182, 212, 0.08) 0%, transparent 50%),
+    radial-gradient(circle at 80% 20%, rgba(245, 158, 11, 0.06) 0%, transparent 50%),
+    radial-gradient(circle at 40% 80%, rgba(244, 114, 182, 0.06) 0%, transparent 50%);
+  animation: backgroundShift 20s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+
+@keyframes backgroundShift {
+  0%, 100% {
+    opacity: 0.6;
+    transform: scale(1) translateY(0);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.1) translateY(-20px);
+  }
+}
+
+/* Ensure content is above the background overlay */
+body > #root {
+  position: relative;
+  z-index: 1;
+}
+
+/* Display typography uses Fraunces */
+h1, h2, h3, h4, h5, h6,
+.display-text {
+  font-family: var(--font-display);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-tight);
+  letter-spacing: -0.02em;
 }
 
 /* Queue Screen Styles */
@@ -87,22 +144,47 @@ body {
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
-.primary { 
-  background: var(--primary); 
-  color: white; 
-  padding: 16px 32px; 
-  border: 0; 
-  border-radius: 12px; 
-  font-size: 1.1em;
-  font-weight: 600;
-  font-family: 'Electrolize', sans-serif;
+.primary {
+  background: var(--color-cool-cyan);
+  color: var(--color-text-inverse);
+  padding: var(--space-4) var(--space-8);
+  border: 2px solid var(--color-cool-cyan);
+  border-radius: var(--radius-medium);
+  font-size: var(--font-size-subheading);
+  font-weight: var(--font-weight-semibold);
+  font-family: var(--font-body);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: var(--transition-default);
+  box-shadow: var(--shadow-subtle), var(--glow-cyan);
+  position: relative;
+  overflow: hidden;
+}
+
+.primary::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s ease;
 }
 
 .primary:hover {
-  background: var(--primary-hover);
+  background: var(--color-cool-cyan-hover);
+  border-color: var(--color-cool-cyan-hover);
   transform: translateY(-2px);
+  box-shadow: var(--shadow-medium), var(--glow-cyan);
+}
+
+.primary:hover::before {
+  left: 100%;
+}
+
+.primary:active {
+  transform: translateY(0);
+  box-shadow: var(--shadow-subtle);
 }
 
 /* Focus Screen Styles */
@@ -338,71 +420,132 @@ body {
   color: rgba(255, 255, 255, 0.6);
 }
 
-/* Mood Selector */
+/* Mood Selector - Refined Circular Design */
 .mood-selector {
-  margin-top: 20px;
+  margin-top: var(--space-8);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 24px;
+  gap: var(--space-8);
 }
 
 .mood-prompt {
-  font-size: 1.1em;
+  font-size: var(--font-size-subheading);
+  font-family: var(--font-display);
   opacity: 0.9;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
+  letter-spacing: -0.01em;
 }
 
 .mood-options {
   display: flex;
-  gap: 32px;
+  gap: var(--space-8);
   justify-content: center;
+  align-items: stretch;
 }
 
 .mood-button {
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(10px);
-  border: 2px solid rgba(255, 255, 255, 0.2);
-  border-radius: 20px;
-  padding: 24px 32px;
-  font-size: 3em;
+  position: relative;
+  background: var(--color-surface-base);
+  backdrop-filter: var(--glass-blur-overlay);
+  -webkit-backdrop-filter: var(--glass-blur-overlay);
+  border: 2px solid var(--color-border-medium);
+  border-radius: var(--radius-large);
+  padding: var(--space-8) var(--space-6);
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: var(--transition-default);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
-  min-width: 120px;
+  gap: var(--space-4);
+  min-width: 140px;
+}
+
+/* Circular indicator at top of button */
+.mood-button::before {
+  content: '';
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  transition: var(--transition-default);
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .mood-button:hover {
-  background: rgba(255, 255, 255, 0.2);
-  border-color: rgba(255, 255, 255, 0.4);
-  transform: translateY(-4px) scale(1.05);
+  background: var(--color-surface-elevated);
+  border-color: var(--color-border-strong);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-medium);
 }
 
+.mood-button:hover::before {
+  transform: scale(1.1);
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3), var(--glow-cyan);
+}
+
+/* Selected state with color coding */
 .mood-button.selected {
-  background: color-mix(in srgb, var(--primary) 40%, transparent);
-  border-color: var(--primary);
   border-width: 3px;
-  transform: scale(1.1);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-medium);
 }
 
-.mood-button.selected:hover {
-  transform: scale(1.1);
+.mood-button.selected::before {
+  border-width: 4px;
+  box-shadow: inset 0 2px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* Low energy - Amber */
+.mood-button:nth-child(1).selected {
+  background: var(--color-amber-glow-subtle);
+  border-color: var(--color-amber-glow);
+}
+
+.mood-button:nth-child(1).selected::before {
+  background: var(--color-amber-glow);
+  border-color: var(--color-amber-glow-hover);
+  box-shadow: var(--glow-amber);
+}
+
+/* Neutral - Slate */
+.mood-button:nth-child(2).selected {
+  background: rgba(148, 163, 184, 0.2);
+  border-color: var(--color-neutral);
+}
+
+.mood-button:nth-child(2).selected::before {
+  background: var(--color-neutral);
+  border-color: var(--color-neutral-hover);
+  box-shadow: 0 0 24px rgba(148, 163, 184, 0.4);
+}
+
+/* High energy - Cyan */
+.mood-button:nth-child(3).selected {
+  background: var(--color-cool-cyan-subtle);
+  border-color: var(--color-cool-cyan);
+}
+
+.mood-button:nth-child(3).selected::before {
+  background: var(--color-cool-cyan);
+  border-color: var(--color-cool-cyan-hover);
+  box-shadow: var(--glow-cyan);
 }
 
 .mood-label {
-  font-size: 0.35em;
-  opacity: 0.8;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 1px;
+  font-size: var(--font-size-body);
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  text-transform: capitalize;
+  letter-spacing: 0.02em;
+  transition: var(--transition-default);
 }
 
 .mood-button.selected .mood-label {
-  opacity: 1;
-  font-weight: 600;
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-semibold);
 }
 
 .focus-footer {
@@ -644,7 +787,7 @@ input[type="range"]::-moz-range-thumb {
   }
 }
 
-/* Animations */
+/* Animations - Twilight Focus Chamber */
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -656,11 +799,22 @@ input[type="range"]::-moz-range-thumb {
 
 @keyframes scaleIn {
   from {
-    transform: scale(0.8);
+    transform: scale(0.9);
     opacity: 0;
   }
   to {
     transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
     opacity: 1;
   }
 }
@@ -673,3 +827,41 @@ input[type="range"]::-moz-range-thumb {
     transform: rotate(360deg);
   }
 }
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+@keyframes glow {
+  0%, 100% {
+    box-shadow: var(--shadow-subtle);
+  }
+  50% {
+    box-shadow: var(--shadow-medium), var(--glow-cyan);
+  }
+}
+
+/* Page load animations */
+.page {
+  animation: fadeIn 0.6s ease-out;
+}
+
+.page h1 {
+  animation: slideUp 0.8s ease-out 0.1s both;
+}
+
+.list li {
+  animation: slideUp 0.6s ease-out both;
+}
+
+.list li:nth-child(1) { animation-delay: 0.1s; }
+.list li:nth-child(2) { animation-delay: 0.15s; }
+.list li:nth-child(3) { animation-delay: 0.2s; }
+.list li:nth-child(4) { animation-delay: 0.25s; }
+.list li:nth-child(5) { animation-delay: 0.3s; }
+.list li:nth-child(n+6) { animation-delay: 0.35s; }
