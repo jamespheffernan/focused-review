@@ -310,18 +310,18 @@ async function exportToOPML(outputPath) {
         ...project,
         folderPath: folderPaths.get(project.id) || ''
       }))
-    
-    // Generate OPML
-    console.log('📝 Generating OPML...')
-    const opml = generateOPML(projectsWithFolders)
-    
-    // Write to file
-    console.log(`💾 Writing to ${outputPath}...`)
-    await fs.writeFile(outputPath, opml, 'utf8')
-    
-    console.log(`✅ Export complete! Saved to ${outputPath}`)
-    console.log(`📊 Exported ${activeProjects.length} projects`)
-    
+      
+      // Generate OPML
+      console.log('📝 Generating OPML...')
+      const opml = generateOPML(projectsWithFolders)
+      
+      // Write to file
+      console.log(`💾 Writing to ${outputPath}...`)
+      await fs.writeFile(outputPath, opml, 'utf8')
+      
+      console.log(`✅ Export complete! Saved to ${outputPath}`)
+      console.log(`📊 Exported ${activeProjects.length} projects`)
+      
       const totalTasks = activeProjects.reduce((sum, p) => {
         const activeTasks = (p.tasks || []).filter(t => !t.completed && t.status !== 'blocked')
         return sum + activeTasks.length
