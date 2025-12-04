@@ -4,7 +4,7 @@ import { X, ChevronLeft, ChevronRight, Download } from 'lucide-react'
 import type { TimelineCommitmentDTO } from '../types'
 import { getCommitmentsForWeek } from '../repos/timelineCommitmentsRepo'
 import { formatWeekLabel, getWeekOffset } from '../utils/calendar-utils'
-import { exportCalendarAsPNG } from '../utils/calendar-export'
+import { exportCalendarAsPDF } from '../utils/calendar-export'
 import CalendarGanttChart from './CalendarGanttChart'
 import './CalendarOverlay.css'
 
@@ -74,7 +74,7 @@ export default function CalendarOverlay({
     
     setExporting(true)
     try {
-      await exportCalendarAsPNG(selectedWeek)
+      await exportCalendarAsPDF(selectedWeek, commitments)
       console.log('✅ Calendar exported successfully')
     } catch (error) {
       console.error('❌ Calendar export failed:', error)
@@ -143,10 +143,10 @@ export default function CalendarOverlay({
               className="calendar-export-button"
               onClick={handleExport}
               disabled={exporting}
-              title="Download as PNG"
+              title="Download as PDF"
             >
               <Download size={18} />
-              {exporting ? 'Exporting...' : 'Export PNG'}
+              {exporting ? 'Exporting...' : 'Export PDF'}
             </button>
             <button
               className="calendar-close-button"

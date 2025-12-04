@@ -16,7 +16,7 @@
     "electron": "ELECTRON=true electron .",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5174 && electron .\"",
     "electron:build": "npm run build && electron-builder",
-    "electron:dist": "npm run build:electron && electron-builder --publish=never",
+    "electron:dist": "npm run build:electron && npm run electron:rebuild && electron-builder --publish=never",
     "electron:rebuild": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {
@@ -26,6 +26,7 @@
     "dexie": "^4.2.0",
     "html2canvas": "^1.4.1",
     "idb-keyval": "^6.2.2",
+    "jspdf": "^3.0.4",
     "lucide-react": "^0.545.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
@@ -63,6 +64,9 @@
     "directories": {
       "output": "dist-electron"
     },
+    "asarUnpack": [
+      "**/node_modules/better-sqlite3/**/*"
+    ],
     "files": [
       "dist/**/*",
       "electron/**/*",
@@ -76,7 +80,8 @@
     ],
     "mac": {
       "category": "public.app-category.productivity",
-      "target": "dmg"
+      "target": "dmg",
+      "icon": "build/icon.png"
     },
     "win": {
       "target": "nsis"

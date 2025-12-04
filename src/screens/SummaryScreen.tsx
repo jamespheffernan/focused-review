@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { db } from '../db'
 import { getStartOfISOWeek } from '../services/review-formatter'
 import { getCommitmentsForWeek } from '../repos/timelineCommitmentsRepo'
-import { exportCalendarAsPNG } from '../utils/calendar-export'
+import { exportCalendarAsPDF } from '../utils/calendar-export'
 import CalendarGanttChart from '../components/CalendarGanttChart'
 import type { TimelineCommitmentDTO } from '../types'
 import { Calendar, Download, Trash2, Sparkles } from 'lucide-react'
@@ -61,7 +61,7 @@ export default function SummaryScreen() {
     setExporting(true)
     try {
       const weekOf = getStartOfISOWeek()
-      await exportCalendarAsPNG(weekOf)
+      await exportCalendarAsPDF(weekOf, commitments)
       console.log('✅ Calendar exported successfully from summary screen')
     } catch (error) {
       console.error('❌ Calendar export failed:', error)
@@ -295,7 +295,7 @@ export default function SummaryScreen() {
                   }}
                 >
                   <Download size={16} />
-                  {exporting ? 'Exporting...' : 'Download PNG'}
+                  {exporting ? 'Exporting...' : 'Download PDF'}
                 </button>
               </div>
             </div>
