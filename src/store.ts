@@ -131,7 +131,7 @@ const generateContextAwareQuestions = async (project: ProjectDTO): Promise<Quest
   }
 }
 
-type Route = { name:'queue' } | { name:'focus', idx:number } | { name:'summary' } | { name:'questions' } | { name:'somedayReview' }
+type Route = { name:'queue' } | { name:'focus', idx:number } | { name:'summary' } | { name:'questions' } | { name:'somedayReview' } | { name:'lists' }
 
 type State = {
   route: Route
@@ -158,6 +158,7 @@ type State = {
   gotoQuestions: () => void
   gotoQueue: () => void
   gotoSomedayReview: () => void
+  gotoLists: () => void
   loadProjectQuestions: (project: ProjectDTO) => Promise<void>
   toggleCalendar: () => void
 }
@@ -226,6 +227,13 @@ export const useApp = create<State>((set, get) => ({
     // Get all due projects (including already reviewed ones)
     const allDueProjects = await Projects.fetchDueForReview()
     const queue = allDueProjects.filter(p => ids.includes(p.id))
+    
+    // If no projects to review, go directly to summary screen
+    if (queue.length === 0) {
+      console.log('📭 No projects to review, redirecting to summary screen')
+      set({ route: { name:'summary' } })
+      return
+    }
     
     // Find first unreviewed project (no answers for this week)
     let firstUnreviewedIdx = 0
@@ -605,6 +613,8 @@ export const useApp = create<State>((set, get) => ({
   gotoQueue: () => set({ route: { name:'queue' } }),
   
   gotoSomedayReview: () => set({ route: { name:'somedayReview' } }),
+  
+  gotoLists: () => set({ route: { name:'lists' } }),
   
   toggleCalendar: () => {
     set({ calendarVisible: !get().calendarVisible })
