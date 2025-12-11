@@ -308,23 +308,7 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
   async function handleTextChange(text: string) {
     if (!project || !q) return // Guard against undefined
     
-    // Auto-prepend "in " for text-parsed questions when parsing fails
-    let finalText = text
-    if (q.type === 'text-parsed' && text.trim()) {
-      const trimmedText = text.trim()
-      // Try parsing first
-      const parsed = parseNaturalDate(trimmedText)
-      // If parsing fails and text doesn't already start with "in ", prepend it
-      if (!parsed && !trimmedText.toLowerCase().startsWith('in ')) {
-        finalText = `in ${trimmedText}`
-        // Update the state with the modified text
-        setCurrentAnswer(finalText)
-      } else {
-        setCurrentAnswer(text)
-      }
-    } else {
-      setCurrentAnswer(text)
-    }
+    setCurrentAnswer(text)
     
     const prev = await latest(project.id, q.id)
     
@@ -336,31 +320,41 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
       .filter(a => a.weekOf === currentWeek)
       .first()
     
-    // Parse date for text-parsed questions (use finalText which may have "in " prepended)
+    // For text-parsed questions, parse and format the date
+    let textToStore = text
     let parsedDate: string | undefined
-    if (q.type === 'text-parsed' && finalText.trim()) {
-      parsedDate = parseNaturalDate(finalText.trim()) || undefined
+    
+    if (q.type === 'text-parsed' && text.trim()) {
+      parsedDate = parseNaturalDate(text.trim()) || undefined
+      if (parsedDate) {
+        // Store formatted date instead of raw input
+        textToStore = describeNaturalDate(text.trim()) || ''
+      } else {
+        // Parsing failed, store empty string
+        textToStore = ''
+      }
     }
     
     const draft: AnswerDraft = {
       id: existingThisWeek?.id || crypto.randomUUID(), // Reuse ID if exists
       projectID: project.id, questionID: q.id,
-      text: finalText, weekOf: currentWeek,
-      status: (!prev || prev.text === finalText) ? 'CarriedForward' : 'Updated',
+      text: textToStore, // Use formatted date or empty string
+      weekOf: currentWeek,
+      status: (!prev || prev.text === textToStore) ? 'CarriedForward' : 'Updated',
       parsedDate
     }
     await setDraft(draft)
     
-    // Update answered questions list
+    // Update answered questions list with formatted text
     const existingIndex = answeredQuestions.findIndex(aq => aq.id === q.id)
     if (existingIndex >= 0) {
       // Update existing answer
       const updated = [...answeredQuestions]
-      updated[existingIndex] = { id: q.id, prompt: q.prompt, answer: text, status: 'answered', draftStatus: draft.status }
+      updated[existingIndex] = { id: q.id, prompt: q.prompt, answer: textToStore, status: 'answered', draftStatus: draft.status }
       setAnsweredQuestions(updated)
     } else {
       // Add new answer
-      setAnsweredQuestions([...answeredQuestions, { id: q.id, prompt: q.prompt, answer: text, status: 'answered', draftStatus: draft.status }])
+      setAnsweredQuestions([...answeredQuestions, { id: q.id, prompt: q.prompt, answer: textToStore, status: 'answered', draftStatus: draft.status }])
     }
   }
 
