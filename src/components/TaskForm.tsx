@@ -501,7 +501,7 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
             </div>
           )}
           {deferDatePreview && (
-            <div style={{ fontSize: '0.8em', color: '#4CAF50', marginTop: '2px' }}>
+            <div className="date-preview">
               ✓ {deferDatePreview}
             </div>
           )}
@@ -562,7 +562,7 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
             </div>
           )}
           {dueDatePreview && (
-            <div style={{ fontSize: '0.8em', color: '#4CAF50', marginTop: '2px' }}>
+            <div className="date-preview">
               ✓ {dueDatePreview}
             </div>
           )}
