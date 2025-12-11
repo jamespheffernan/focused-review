@@ -26,14 +26,13 @@ customChrono.refiners.push({
 
 /**
  * Parse natural language date input to ISO date string (YYYY-MM-DD)
- * Uses enhanced chrono parsing with fallback to "in " prepending
+ * Uses enhanced chrono parsing
  * 
  * Examples:
  * - "tomorrow" -> "2025-10-10"
  * - "next friday" -> "2025-10-11"
  * - "in 2 weeks" -> "2025-10-23"
  * - "monday" (on thursday) -> "next monday" -> "2025-10-13"
- * - "2 weeks" -> tries "in 2 weeks" -> "2025-10-23"
  * 
  * @param text Natural language date string
  * @returns ISO date string (YYYY-MM-DD) or null if parsing fails
@@ -88,17 +87,9 @@ export function parseNaturalDate(text: string): string | null {
   };
 
   // Try parsing the original text
-  let parsedDate = tryParse(trimmedText);
+  const parsedDate = tryParse(trimmedText);
   if (parsedDate) {
     return toISOString(parsedDate);
-  }
-
-  // If parsing failed and text doesn't already start with "in ", try with "in " prepended
-  if (!trimmedText.toLowerCase().startsWith('in ')) {
-    parsedDate = tryParse(`in ${trimmedText}`);
-    if (parsedDate) {
-      return toISOString(parsedDate);
-    }
   }
 
   return null;
