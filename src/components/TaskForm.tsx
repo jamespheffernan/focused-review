@@ -415,10 +415,11 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
       e.preventDefault()
       if (showTagDropdown && highlightedTagIndex >= 0 && highlightedTagIndex <= maxVisibleIndex && filteredTags.length > 0) {
         const selectedTag = filteredTags[highlightedTagIndex]
+        setTagInput('') // Clear input immediately when selecting from dropdown
         addTagFromInput(selectedTag.name)
         return
       }
-      addTagFromInput(tagInput)
+      addTagFromInput(tagInput) // This will clear the input if successful
       return
     }
 
@@ -613,7 +614,10 @@ export default function TaskForm({ projectId, task, onSave, onCancel }: TaskForm
                 <div
                   key={tag.id}
                   className={`context-option ${index === highlightedTagIndex ? 'highlighted' : ''}`}
-                  onClick={() => addTagFromInput(tag.name)}
+                  onClick={() => {
+                    setTagInput('') // Clear input immediately when clicking dropdown item
+                    addTagFromInput(tag.name)
+                  }}
                   onMouseEnter={() => setHighlightedTagIndex(index)}
                 >
                   {tag.name}
