@@ -3,7 +3,7 @@ import { useApp } from '../store'
 import { getOmniFocusIntegrationStatus } from '../repos/projectsRepo'
 import { getTaskStatisticsBatch } from '../repos/tasksRepo'
 import { syncManager } from '../services/syncManager'
-import { RefreshCw, Info, AlertTriangle, ClipboardList, CheckCircle2, Ban, Settings, Sparkles, List } from 'lucide-react'
+import { RefreshCw, Info, AlertTriangle, ClipboardList, CheckCircle2, Ban, Settings, Sparkles, List, Target } from 'lucide-react'
 import ThemeSelector from '../components/ThemeSelector'
 import { themeManager } from '../services/themeManager'
 import { DataSourceBanner } from '../components/DataSourceBanner'
@@ -12,7 +12,7 @@ import * as Answers from '../repos/answersRepo'
 import { getStartOfISOWeek } from '../services/review-formatter'
 
 export default function QueueScreen() {
-  const { queue, start, syncFromOmniFocus, gotoQuestions, gotoSomedayReview, gotoLists } = useApp()
+  const { queue, start, syncFromOmniFocus, gotoQuestions, gotoSomedayReview, gotoLists, gotoPlanningWizard } = useApp()
   const [sel, setSel] = useState<Set<string>>(new Set())
   const [weeklyReview, setWeeklyReview] = useState<{ state: string } | null>(null)
   const [reviewedProjects, setReviewedProjects] = useState<Set<string>>(new Set())
@@ -449,6 +449,24 @@ export default function QueueScreen() {
         >
           <List size={18} />
           List Manager
+        </button>
+
+        <button
+          onClick={() => gotoPlanningWizard()}
+          className="primary"
+          style={{
+            background: '#8b5cf6',
+            borderColor: '#8b5cf6',
+            fontSize: 'var(--font-size-body)',
+            padding: 'var(--space-3) var(--space-6)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--space-2)',
+            boxShadow: 'var(--shadow-subtle), 0 0 20px rgba(139, 92, 246, 0.3)'
+          }}
+        >
+          <Target size={18} />
+          Natural Planning
         </button>
       </div>
     </div>
