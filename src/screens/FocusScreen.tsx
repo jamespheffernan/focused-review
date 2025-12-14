@@ -17,10 +17,10 @@ import TimelineHistory from '../components/TimelineHistory'
 import { extractNotionLink, getNotionLinkError, hasNotionLink } from '../utils/notionLink'
 import { parseNaturalDate, describeNaturalDate } from '../utils/date-parser'
 import { getLastWeekAnswerHint } from '../utils/question-hints'
-import { FileText, SkipForward, CheckCircle, ExternalLink, Calendar, History } from 'lucide-react'
+import { FileText, SkipForward, CheckCircle, ExternalLink, Calendar, History, Target } from 'lucide-react'
 
 export default function FocusScreen({ projectIndex }: { projectIndex: number }) {
-  const { queue, currentProjectQuestions, setDraft, markReviewedAndNext, skipAndNext, markCompleteAndNext, archiveAndNext, somedayMaybeAndNext, loadProjectQuestions, calendarVisible, calendarWeekOf, reviewedProjectsThisSession, toggleCalendar } = useApp()
+  const { queue, currentProjectQuestions, setDraft, markReviewedAndNext, skipAndNext, markCompleteAndNext, archiveAndNext, somedayMaybeAndNext, loadProjectQuestions, calendarVisible, calendarWeekOf, reviewedProjectsThisSession, toggleCalendar, gotoPlanningWizard } = useApp()
   const project = queue[projectIndex]
   const [idx, setIdx] = useState(0)
   const [remaining, setRemaining] = useState(30)
@@ -1217,6 +1217,18 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
           }}
         >
           Someday/Maybe
+        </button>
+        <button 
+          className="action-button"
+          onClick={() => gotoPlanningWizard(project.id)}
+          style={{
+            background: 'rgba(139, 92, 246, 0.2)',
+            borderColor: '#8b5cf6',
+            color: '#c4b5fd'
+          }}
+        >
+          <Target size={16} style={{ marginRight: '6px' }} />
+          Plan This Project
         </button>
       </div>
     </div>

@@ -95,3 +95,67 @@ export interface TimelineCommitmentDTO {
   answerId: string             // ID of the answer that created this commitment
   createdAt: string            // Timestamp when commitment was created
 }
+
+// Natural Planning Model types
+export interface PlanningSessionDTO {
+  id: string                           // UUID
+  projectId: string                    // Reference to OmniFocus project
+  projectName: string                  // Denormalized for display
+  createdAt: string                    // ISO timestamp
+  updatedAt: string                    // ISO timestamp
+  currentStage: 1 | 2 | 3 | 4 | 5
+  completedStages: number[]            // e.g., [1, 2] means stages 1-2 complete
+  
+  // Stage 1: Purpose
+  purposeStatement: string
+  principles: string[]
+  
+  // Stage 2: Vision
+  visionDescription: string
+  successCriteria: PlanningSuccessCriterion[]
+  
+  // Stage 3: Brainstorm
+  brainstormItems: PlanningBrainstormItem[]
+  
+  // Stage 4: Organize
+  workstreams: PlanningWorkstream[]
+  unorganizedItemIds: string[]
+  
+  // Stage 5: Next Actions
+  nextActions: PlanningNextAction[]
+  
+  // Notion Sync (Stream I)
+  syncedToNotion: boolean              // Track if planning has been synced
+  notionSyncedAt?: string              // ISO timestamp of last sync
+}
+
+export interface PlanningSuccessCriterion {
+  id: string
+  text: string
+  completed: boolean
+  order: number
+}
+
+export interface PlanningBrainstormItem {
+  id: string
+  text: string
+  createdAt: string
+  organized: boolean
+  position: { x: number; y: number }   // 0-1 percentages
+}
+
+export interface PlanningWorkstream {
+  id: string
+  name: string
+  itemIds: string[]                    // References to brainstorm item IDs
+  order: number
+}
+
+export interface PlanningNextAction {
+  id: string
+  text: string
+  workstreamId: string | null          // null = "Other" section
+  context: string | null               // @context tag
+  completed: boolean
+  exportedToOmniFocus: boolean
+}

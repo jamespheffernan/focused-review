@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie'
-import type { ProjectDTO, AnswerDraft, SessionDTO, TaskDTO, NotionSyncQueueItem, QuestionDTO, QuestionPackageDTO, TimelineCommitmentDTO, WeeklyReviewDTO } from './types'
+import type { ProjectDTO, AnswerDraft, SessionDTO, TaskDTO, NotionSyncQueueItem, QuestionDTO, QuestionPackageDTO, TimelineCommitmentDTO, WeeklyReviewDTO, PlanningSessionDTO } from './types'
 
 export class ReviewDB extends Dexie {
   projects!: Table<ProjectDTO, string>
@@ -11,6 +11,7 @@ export class ReviewDB extends Dexie {
   questionPackages!: Table<QuestionPackageDTO, string>
   timelineCommitments!: Table<TimelineCommitmentDTO, string>
   weeklyReviews!: Table<WeeklyReviewDTO, string>
+  planningSessions!: Table<PlanningSessionDTO, string>
   constructor() {
     super('reviewhud')
     this.version(1).stores({
@@ -105,6 +106,19 @@ export class ReviewDB extends Dexie {
       questionPackages: 'id, order',
       timelineCommitments: 'id, projectId, weekOf, committedDate, [projectId+weekOf]',
       weeklyReviews: 'id, weekOf, state, [weekOf+state]'
+    })
+    // Version 12: Add planningSessions table for Natural Planning Model
+    this.version(12).stores({
+      projects: 'id, lastReviewed, status, nextReviewDate',
+      answers: 'id, projectID, questionID, weekOf, parentAnswerId, parsedDate, [projectID+questionID], [projectID+weekOf]',
+      sessions: 'id, startedAt, weeklyReviewId',
+      tasks: 'id, projectId, status, completed, [projectId+status], [projectId+completed], dueDate, flagged, lastModified, syncState',
+      notionSyncQueue: 'id, projectId, weekOf, status, nextRetry, [projectId+weekOf]',
+      questions: 'id, category, [category+order]',
+      questionPackages: 'id, order',
+      timelineCommitments: 'id, projectId, weekOf, committedDate, [projectId+weekOf]',
+      weeklyReviews: 'id, weekOf, state, [weekOf+state]',
+      planningSessions: 'id, projectId, updatedAt, currentStage, [projectId+updatedAt]'
     })
   }
 }

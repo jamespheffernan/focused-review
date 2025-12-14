@@ -131,7 +131,7 @@ const generateContextAwareQuestions = async (project: ProjectDTO): Promise<Quest
   }
 }
 
-type Route = { name:'queue' } | { name:'focus', idx:number } | { name:'summary' } | { name:'questions' } | { name:'somedayReview' } | { name:'lists' }
+type Route = { name:'queue' } | { name:'focus', idx:number } | { name:'summary' } | { name:'questions' } | { name:'somedayReview' } | { name:'lists' } | { name:'planning', projectId?: string }
 
 type State = {
   route: Route
@@ -161,6 +161,10 @@ type State = {
   gotoLists: () => void
   loadProjectQuestions: (project: ProjectDTO) => Promise<void>
   toggleCalendar: () => void
+  // Planning wizard state
+  planningSessionId: string | null
+  planningProjectId: string | null
+  gotoPlanningWizard: (projectId?: string) => void
 }
 
 export const useApp = create<State>((set, get) => ({
@@ -618,7 +622,17 @@ export const useApp = create<State>((set, get) => ({
   
   toggleCalendar: () => {
     set({ calendarVisible: !get().calendarVisible })
-  }
+  },
+  
+  planningSessionId: null,
+  planningProjectId: null,
+  
+  gotoPlanningWizard: (projectId?: string) => {
+    set({ 
+      route: { name: 'planning', projectId },
+      planningProjectId: projectId || null
+    })
+  },
 }))
 
 /**

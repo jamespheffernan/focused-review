@@ -5,6 +5,7 @@ import FocusScreen from './screens/FocusScreen'
 import SummaryScreen from './screens/SummaryScreen'
 import QuestionsScreen from './screens/QuestionsScreen'
 import SomedayReviewScreen from './screens/SomedayReviewScreen'
+import PlanningWizardScreen from './screens/PlanningWizardScreen'
 import DateParsingTest from './components/DateParsingTest'
 import { taskSyncQueue } from './services/taskSyncQueue'
 import { migrateToQuestionPackages } from './services/questionPackage-migration'
@@ -59,5 +60,6 @@ export default function App() {
   if (route.name === 'focus') return <FocusScreen projectIndex={route.idx} />
   if (route.name === 'questions') return <QuestionsScreen />
   if (route.name === 'somedayReview') return <SomedayReviewScreen />
+  if (route.name === 'planning') return <PlanningWizardScreen projectId={route.projectId} />
   return <SummaryScreen />
 }
