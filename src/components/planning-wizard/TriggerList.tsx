@@ -149,3 +149,4 @@ export default function TriggerList({ onSelectTrigger }: Props) {
     </div>
   )
 }
+

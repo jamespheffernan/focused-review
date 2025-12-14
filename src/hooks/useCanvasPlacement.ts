@@ -31,3 +31,4 @@ export function getInitialPosition(
     y: 0.12 + (row * 0.20)
   }
 }
+

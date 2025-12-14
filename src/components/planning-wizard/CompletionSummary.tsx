@@ -280,3 +280,4 @@ export default function CompletionSummary({ session, onUpdate, onClose, onEdit }
     </div>
   )
 }
+
