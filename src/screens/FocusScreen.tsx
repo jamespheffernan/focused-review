@@ -18,6 +18,8 @@ import { extractNotionLink, getNotionLinkError, hasNotionLink } from '../utils/n
 import { parseNaturalDate, describeNaturalDate } from '../utils/date-parser'
 import { getLastWeekAnswerHint } from '../utils/question-hints'
 import { FileText, SkipForward, CheckCircle, ExternalLink, Calendar, History, Target } from 'lucide-react'
+import { getSessionByProject } from '../repos/planningSessionsRepo'
+import type { PlanningSessionDTO } from '../types'
 
 export default function FocusScreen({ projectIndex }: { projectIndex: number }) {
   const { queue, currentProjectQuestions, setDraft, markReviewedAndNext, skipAndNext, markCompleteAndNext, archiveAndNext, somedayMaybeAndNext, loadProjectQuestions, calendarVisible, calendarWeekOf, reviewedProjectsThisSession, toggleCalendar, gotoPlanningWizard } = useApp()
@@ -40,6 +42,7 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
   const [showInboxSuccess, setShowInboxSuccess] = useState(false)
   const [inboxTaskName, setInboxTaskName] = useState('')
   const [showTimelineHistory, setShowTimelineHistory] = useState(false)
+  const [planningSession, setPlanningSession] = useState<PlanningSessionDTO | null>(null)
   // Local state to track dynamically injected followup questions
   const [injectedFollowups, setInjectedFollowups] = useState<Map<number, QuestionDTO>>(new Map())
 
@@ -98,6 +101,13 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
     loadProjectQuestions(project)
     // Auto-load tasks for the current project
     loadProjectTasks()
+    // Load planning session for the current project
+    getSessionByProject(project.id).then(session => {
+      setPlanningSession(session || null)
+    }).catch(error => {
+      console.error('Error loading planning session:', error)
+      setPlanningSession(null)
+    })
   }, [project?.id, projectIndex, loadProjectQuestions, loadProjectTasks, project])
 
   // Handle task updates
@@ -356,6 +366,75 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
       // Add new answer
       setAnsweredQuestions([...answeredQuestions, { id: q.id, prompt: q.prompt, answer: textToStore, status: 'answered', draftStatus: draft.status }])
     }
+    
+    // If this is the "next action" question and answer is provided, flag the task in OmniFocus
+    if (q.id === 'q-next' && textToStore.trim()) {
+      handleNextActionFlagging(textToStore.trim()).catch(error => {
+        console.error('❌ Failed to flag next action task:', error)
+      })
+    }
+  }
+  
+  /**
+   * Handle flagging the next action task in OmniFocus when user defines it
+   */
+  async function handleNextActionFlagging(answerText: string) {
+    if (!project || !window.electronAPI?.omnifocus) {
+      console.log('⏭️ Skipping next action flagging: project or OmniFocus API not available')
+      return
+    }
+    
+    try {
+      console.log(`🏁 [Next Action] Processing answer: "${answerText}"`)
+      
+      // Fetch tasks for this project
+      const tasks = await fetchTasksForProject(project.id)
+      console.log(`🏁 [Next Action] Found ${tasks.length} tasks for project ${project.name}`)
+      
+      if (tasks.length === 0) {
+        console.log('⏭️ [Next Action] No tasks found to flag')
+        return
+      }
+      
+      // Filter to available/incomplete tasks
+      const availableTasks = tasks.filter(t => !t.completed && t.status !== 'completed')
+      console.log(`🏁 [Next Action] ${availableTasks.length} available tasks`)
+      
+      if (availableTasks.length === 0) {
+        console.log('⏭️ [Next Action] No available tasks to flag')
+        return
+      }
+      
+      // Try to find a task that matches the answer text (case-insensitive partial match)
+      const normalizedAnswer = answerText.toLowerCase()
+      let taskToFlag = availableTasks.find(task => 
+        task.name.toLowerCase().includes(normalizedAnswer) || 
+        normalizedAnswer.includes(task.name.toLowerCase())
+      )
+      
+      // If no match found, use the first available task
+      if (!taskToFlag) {
+        taskToFlag = availableTasks[0]
+        console.log(`🏁 [Next Action] No matching task found, using first available: "${taskToFlag.name}"`)
+      } else {
+        console.log(`🏁 [Next Action] Found matching task: "${taskToFlag.name}"`)
+      }
+      
+      // Flag the task in OmniFocus via the bridge plugin
+      console.log(`🏁 [Next Action] Flagging task "${taskToFlag.name}" (ID: ${taskToFlag.id})`)
+      const result = await window.electronAPI.omnifocus.updateTask(taskToFlag.id, { flagged: true })
+      
+      if (result.success) {
+        console.log(`✅ [Next Action] Successfully flagged task "${taskToFlag.name}" in OmniFocus`)
+        // Update local task state
+        await updateTask(taskToFlag.id, { flagged: true })
+      } else {
+        console.error(`❌ [Next Action] Failed to flag task: ${result.error}`)
+      }
+    } catch (error) {
+      console.error('❌ [Next Action] Error flagging task:', error)
+      // Don't throw - this is a non-critical operation
+    }
   }
 
 
@@ -482,6 +561,13 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
       updatedAnsweredQuestions = [...answeredQuestions, newAnsweredQuestion]
     }
     setAnsweredQuestions(updatedAnsweredQuestions)
+    
+    // If this is the "next action" question and answer is "yes", flag the task in OmniFocus
+    if (q.id === 'q-next' && value === true) {
+      handleNextActionFlagging('yes').catch(error => {
+        console.error('❌ Failed to flag next action task:', error)
+      })
+    }
     
     // Check if we need to inject a followup question based on the yes/no answer
     // Get the question package to check followup logic
@@ -871,7 +957,22 @@ export default function FocusScreen({ projectIndex }: { projectIndex: number }) 
         <div className="focus-header-right">
           <div className="project-info">
             <div className="project-header-row title">
-              <div className="project-name">Project: {project.name}</div>
+              <div className="project-name" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>Project: {project.name}</span>
+                {planningSession && (
+                  <span 
+                    title={`Has planning session (${planningSession.completedStages.length}/5 stages complete)`}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', opacity: 0.8 }}
+                  >
+                    <Target size={16} style={{ color: '#8b5cf6' }} />
+                    {planningSession.completedStages.length > 0 && (
+                      <span style={{ fontSize: '0.85em', opacity: 0.7 }}>
+                        {planningSession.completedStages.length}/5
+                      </span>
+                    )}
+                  </span>
+                )}
+              </div>
             </div>
             <div className="project-header-row actions">
               <ProjectNavigator 

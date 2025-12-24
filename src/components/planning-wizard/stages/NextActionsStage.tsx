@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import type { PlanningSessionDTO } from '../../../types'
 import { ArrowLeft, Plus, CheckCircle } from 'lucide-react'
 import StageHeader from '../StageHeader'
@@ -6,14 +6,14 @@ import NextActionItem from '../NextActionItem'
 import CompletionSummary from '../CompletionSummary'
 import { addNextAction, updateNextAction } from '../../../repos/planningSessionsRepo'
 
-interface Props {
+interface NextActionsStageProps {
   session: PlanningSessionDTO
   isCurrentStage: boolean
   onUpdate: (updates: Partial<PlanningSessionDTO>) => Promise<void>
   onBack: () => void
 }
 
-export default function NextActionsStage({ session, isCurrentStage, onUpdate, onBack }: Props) {
+const NextActionsStage: React.FC<NextActionsStageProps> = ({ session, isCurrentStage, onUpdate, onBack }) => {
   const [newActionText, setNewActionText] = useState('')
   const [selectedWorkstreamId, setSelectedWorkstreamId] = useState<string | null>(null)
   const [showSummary, setShowSummary] = useState(false)
@@ -23,12 +23,75 @@ export default function NextActionsStage({ session, isCurrentStage, onUpdate, on
     if (!newActionText.trim()) return
     
     try {
-      const newAction = await addNextAction(
+      // First, create the action locally
+      let newAction = await addNextAction(
         session.id,
         newActionText.trim(),
         selectedWorkstreamId,
         null
       )
+      
+      // Then create and flag the task in OmniFocus
+      if (window.electronAPI?.omnifocus) {
+        try {
+          console.log(`🏁 [Planning] Creating task in OmniFocus: "${newActionText.trim()}" for project ${session.projectId}`)
+          
+          // Create the task in OmniFocus
+          const createResult = await window.electronAPI.omnifocus.createTask(
+            session.projectId,
+            newActionText.trim()
+          )
+          
+          if (createResult.success && createResult.taskId) {
+            console.log(`✅ [Planning] Task created in OmniFocus: ${createResult.taskId}`)
+            
+            // Flag the task as next action
+            const flagResult = await window.electronAPI.omnifocus.updateTask(
+              createResult.taskId,
+              { flagged: true }
+            )
+            
+            if (flagResult.success) {
+              console.log(`✅ [Planning] Task flagged as next action in OmniFocus`)
+              
+              // If context is provided, set tags
+              if (newAction.context) {
+                const contextTag = [newAction.context.replace('@', '')]
+                const tagResult = await window.electronAPI.omnifocus.setTaskTags(
+                  createResult.taskId,
+                  contextTag
+                )
+                
+                if (tagResult.success) {
+                  console.log(`✅ [Planning] Task tags set in OmniFocus: ${contextTag.join(', ')}`)
+                } else {
+                  console.error(`❌ [Planning] Failed to set task tags: ${tagResult.error}`)
+                }
+              }
+              
+              // Update the action with the OmniFocus task ID
+              await updateNextAction(session.id, newAction.id, {
+                exportedToOmniFocus: true,
+                omniFocusTaskId: createResult.taskId
+              })
+              
+              // Update local action object
+              newAction = {
+                ...newAction,
+                exportedToOmniFocus: true,
+                omniFocusTaskId: createResult.taskId
+              }
+            } else {
+              console.error(`❌ [Planning] Failed to flag task: ${flagResult.error}`)
+            }
+          } else {
+            console.error(`❌ [Planning] Failed to create task: ${createResult.error || 'Unknown error'}`)
+          }
+        } catch (omniFocusError) {
+          console.error('❌ [Planning] Error creating task in OmniFocus:', omniFocusError)
+          // Continue anyway - action is saved locally
+        }
+      }
       
       await onUpdate({
         nextActions: [...session.nextActions, newAction]
@@ -44,6 +107,30 @@ export default function NextActionsStage({ session, isCurrentStage, onUpdate, on
   const handleUpdateAction = async (actionId: string, updates: Partial<typeof session.nextActions[0]>) => {
     try {
       await updateNextAction(session.id, actionId, updates)
+      
+      const action = session.nextActions.find(a => a.id === actionId)
+      const updatedAction = action ? { ...action, ...updates } : null
+      
+      // If context is being updated and task exists in OmniFocus, sync the tags
+      if (updatedAction && 'context' in updates && updatedAction.omniFocusTaskId && window.electronAPI?.omnifocus) {
+        try {
+          const contextTag = updates.context ? [updates.context.replace('@', '')] : []
+          console.log(`🏁 [Planning] Updating task tags in OmniFocus: ${updatedAction.omniFocusTaskId} with context: ${contextTag.join(', ')}`)
+          
+          const tagResult = await window.electronAPI.omnifocus.setTaskTags(
+            updatedAction.omniFocusTaskId,
+            contextTag
+          )
+          
+          if (tagResult.success) {
+            console.log(`✅ [Planning] Task tags updated in OmniFocus`)
+          } else {
+            console.error(`❌ [Planning] Failed to update task tags: ${tagResult.error}`)
+          }
+        } catch (tagError) {
+          console.error('❌ [Planning] Error updating task tags:', tagError)
+        }
+      }
       
       const updatedActions = session.nextActions.map(action =>
         action.id === actionId ? { ...action, ...updates } : action
@@ -331,3 +418,5 @@ export default function NextActionsStage({ session, isCurrentStage, onUpdate, on
     </>
   )
 }
+
+export default NextActionsStage

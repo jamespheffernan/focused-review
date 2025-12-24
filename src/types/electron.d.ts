@@ -85,6 +85,56 @@ export interface ElectronAPI {
       folderPath?: string
       error?: string
     }>
+    
+    // Lists Hub API
+    getListsHubStatus: () => Promise<{
+      configured: boolean
+      hubPageId?: string
+      error?: string
+    }>
+    getAllLists: () => Promise<{
+      success: boolean
+      lists?: Array<{
+        databaseId: string
+        name: string
+        createdTime: string
+        lastEditedTime: string
+      }>
+      error?: string
+    }>
+    getListItems: (databaseId: string) => Promise<{
+      success: boolean
+      items?: Array<{
+        pageId: string
+        name: string
+        notes: string
+        created: string
+        lastEdited: string
+      }>
+      error?: string
+    }>
+    createList: (name: string) => Promise<{
+      success: boolean
+      databaseId?: string
+      error?: string
+    }>
+    addListItem: (databaseId: string, name: string, notes?: string) => Promise<{
+      success: boolean
+      pageId?: string
+      error?: string
+    }>
+    updateListItem: (pageId: string, updates: { name?: string; notes?: string }) => Promise<{
+      success: boolean
+      error?: string
+    }>
+    deleteListItem: (pageId: string) => Promise<{
+      success: boolean
+      error?: string
+    }>
+    deleteList: (databaseId: string) => Promise<{
+      success: boolean
+      error?: string
+    }>
   }
   
   platform: {

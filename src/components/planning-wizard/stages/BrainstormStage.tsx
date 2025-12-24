@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import type { PlanningSessionDTO } from '../../../types'
 import { ArrowRight, ArrowLeft } from 'lucide-react'
 import StageHeader from '../StageHeader'
@@ -7,7 +7,7 @@ import TriggerList from '../TriggerList'
 import { addBrainstormItem, updateBrainstormPosition, removeBrainstormItem } from '../../../repos/planningSessionsRepo'
 import { getInitialPosition } from '../../../hooks/useCanvasPlacement'
 
-interface Props {
+interface BrainstormStageProps {
   session: PlanningSessionDTO
   isCurrentStage: boolean
   onUpdate: (updates: Partial<PlanningSessionDTO>) => Promise<void>
@@ -15,7 +15,7 @@ interface Props {
   onBack: () => void
 }
 
-export default function BrainstormStage({ session, isCurrentStage, onUpdate, onContinue, onBack }: Props) {
+const BrainstormStage: React.FC<BrainstormStageProps> = ({ session, isCurrentStage, onUpdate, onContinue, onBack }) => {
   const [newItemText, setNewItemText] = useState('')
   const [saving, setSaving] = useState(false)
   
@@ -24,21 +24,36 @@ export default function BrainstormStage({ session, isCurrentStage, onUpdate, onC
     
     setSaving(true)
     try {
-      const position = getInitialPosition(session.brainstormItems)
-      await addBrainstormItem(session.id, newItemText.trim(), position)
+      // Split by comma to allow adding multiple items at once
+      const itemTexts = newItemText
+        .split(',')
+        .map(text => text.trim())
+        .filter(text => text.length > 0)
       
-      // Update local state
-      const newItem = {
-        id: crypto.randomUUID(),
-        text: newItemText.trim(),
-        createdAt: new Date().toISOString(),
-        organized: false,
-        position
+      if (itemTexts.length === 0) return
+      
+      const newItems: typeof session.brainstormItems = []
+      let currentItems = [...session.brainstormItems]
+      
+      for (const text of itemTexts) {
+        const position = getInitialPosition(currentItems)
+        await addBrainstormItem(session.id, text, position)
+        
+        const newItem = {
+          id: crypto.randomUUID(),
+          text,
+          createdAt: new Date().toISOString(),
+          organized: false,
+          position
+        }
+        
+        newItems.push(newItem)
+        currentItems = [...currentItems, newItem]
       }
       
       await onUpdate({
-        brainstormItems: [...session.brainstormItems, newItem],
-        unorganizedItemIds: [...session.unorganizedItemIds, newItem.id]
+        brainstormItems: [...session.brainstormItems, ...newItems],
+        unorganizedItemIds: [...session.unorganizedItemIds, ...newItems.map(item => item.id)]
       })
       
       setNewItemText('')
@@ -126,7 +141,7 @@ export default function BrainstormStage({ session, isCurrentStage, onUpdate, onC
                   handleAddItem()
                 }
               }}
-              placeholder="Add an idea, thought, or consideration..."
+              placeholder="Add ideas (separate multiple with commas)..."
               disabled={saving}
               style={{
                 flex: 1,
@@ -224,3 +239,5 @@ export default function BrainstormStage({ session, isCurrentStage, onUpdate, onC
     </div>
   )
 }
+
+export default BrainstormStage

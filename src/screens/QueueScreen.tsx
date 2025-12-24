@@ -10,6 +10,8 @@ import { DataSourceBanner } from '../components/DataSourceBanner'
 import * as WeeklyReviews from '../repos/weeklyReviewsRepo'
 import * as Answers from '../repos/answersRepo'
 import { getStartOfISOWeek } from '../services/review-formatter'
+import { getSessionByProject } from '../repos/planningSessionsRepo'
+import type { PlanningSessionDTO } from '../types'
 
 export default function QueueScreen() {
   const { queue, start, syncFromOmniFocus, gotoQuestions, gotoSomedayReview, gotoLists, gotoPlanningWizard } = useApp()
@@ -45,6 +47,7 @@ export default function QueueScreen() {
     
     if (queue.length > 0) {
       loadWeeklyReviewState()
+      loadPlanningSessions()
     }
   }, [queue])
   
@@ -57,6 +60,7 @@ export default function QueueScreen() {
     return localStorage.getItem('blinders-hide-of4-note') !== 'true'
   })
   const [taskStats, setTaskStats] = useState<Record<string, {total: number, next: number, available: number, blocked: number, completed: number}>>({})
+  const [planningSessions, setPlanningSessions] = useState<Record<string, PlanningSessionDTO>>({})
   const [isSyncing, setIsSyncing] = useState(false)
   const [lastSyncText, setLastSyncText] = useState<string>('')
   const [syncError, setSyncError] = useState<string | null>(null)
@@ -92,6 +96,23 @@ export default function QueueScreen() {
       alert(`Sync failed: ${errorMessage}\n\nCheck console for details.`)
     } finally {
       setIsSyncing(false)
+    }
+  }
+
+  // Load planning sessions for all projects
+  const loadPlanningSessions = async () => {
+    try {
+      const sessions: Record<string, PlanningSessionDTO> = {}
+      for (const project of queue) {
+        const session = await getSessionByProject(project.id)
+        if (session) {
+          sessions[project.id] = session
+        }
+      }
+      setPlanningSessions(sessions)
+      console.log(`✅ Loaded ${Object.keys(sessions).length} planning sessions`)
+    } catch (error) {
+      console.error('Error loading planning sessions:', error)
     }
   }
 
@@ -350,6 +371,19 @@ export default function QueueScreen() {
                   <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <span>{p.name}</span>
+                    {planningSessions[p.id] && (
+                      <span 
+                        title={`Has planning session (${planningSessions[p.id].completedStages.length}/5 stages complete)`}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                      >
+                        <Target size={16} style={{ color: '#8b5cf6', opacity: 0.9 }} />
+                        {planningSessions[p.id].completedStages.length > 0 && (
+                          <span style={{ fontSize: '0.75em', opacity: 0.7 }}>
+                            {planningSessions[p.id].completedStages.length}/5
+                          </span>
+                        )}
+                      </span>
+                    )}
                     {reviewedProjects.has(p.id) && (
                       <span title="Reviewed this week">
                         <CheckCircle2 size={16} style={{ color: '#4CAF50', opacity: 0.8 }} />

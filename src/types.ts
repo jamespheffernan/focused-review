@@ -158,4 +158,5 @@ export interface PlanningNextAction {
   context: string | null               // @context tag
   completed: boolean
   exportedToOmniFocus: boolean
+  omniFocusTaskId?: string             // ID of the task in OmniFocus (if created)
 }

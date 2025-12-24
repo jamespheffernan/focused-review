@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import type { PlanningSessionDTO } from '../../../types'
 import { ArrowRight, ArrowLeft, Plus, GripVertical } from 'lucide-react'
 import StageHeader from '../StageHeader'
 import WorkstreamCard from '../WorkstreamCard'
 import { addWorkstream, moveItemToWorkstream, moveItemToUnorganized } from '../../../repos/planningSessionsRepo'
 
-interface Props {
+interface OrganizeStageProps {
   session: PlanningSessionDTO
   isCurrentStage: boolean
   onUpdate: (updates: Partial<PlanningSessionDTO>) => Promise<void>
@@ -13,7 +13,7 @@ interface Props {
   onBack: () => void
 }
 
-export default function OrganizeStage({ session, isCurrentStage, onUpdate, onContinue, onBack }: Props) {
+const OrganizeStage: React.FC<OrganizeStageProps> = ({ session, isCurrentStage, onUpdate, onContinue, onBack }) => {
   const [newWorkstreamName, setNewWorkstreamName] = useState('')
   const [isDraggingOver, setIsDraggingOver] = useState(false)
   
@@ -370,3 +370,5 @@ export default function OrganizeStage({ session, isCurrentStage, onUpdate, onCon
     </div>
   )
 }
+
+export default OrganizeStage

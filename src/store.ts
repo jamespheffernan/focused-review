@@ -53,60 +53,90 @@ const FALLBACK_QUESTIONS: QuestionDTO[] = [
  * Non-blocking - fires and forgets, errors are added to retry queue
  */
 async function triggerNotionSync(projectId: string, weekOf: string): Promise<void> {
+  console.log(`🔄 [Notion Sync] Starting sync for project ${projectId}, week ${weekOf}`)
+  
   // Check if we're in Electron environment
   if (!window.electronAPI?.notion) {
-    console.log('⏭️ Notion sync skipped: not in Electron environment')
+    console.log('⏭️ [Notion Sync] Skipped: not in Electron environment')
     return
   }
   
-  console.log(`🔄 Triggering Notion sync for project ${projectId}, week ${weekOf}`)
+  // Check if Notion is configured before proceeding
+  try {
+    const config = await window.electronAPI.notion.isConfigured()
+    if (!config.configured) {
+      console.log('⏭️ [Notion Sync] Skipped: Notion not configured')
+      console.log(`   [Notion Sync] Token: ${config.hasToken ? 'Set' : 'Not set'}, Database: ${config.hasDatabase ? 'Set' : 'Not set'}`)
+      return
+    }
+    console.log(`✅ [Notion Sync] Configuration verified: Token=${config.hasToken}, Database=${config.hasDatabase}`)
+  } catch (configError) {
+    console.error('❌ [Notion Sync] Error checking configuration:', configError)
+    return
+  }
+  
+  console.log(`🔄 [Notion Sync] Triggering sync for project ${projectId}, week ${weekOf}`)
   
   // Add to queue FIRST to prevent race conditions (even if sync succeeds immediately)
+  console.log(`📋 [Notion Sync] Adding to queue: project ${projectId}, week ${weekOf}`)
   const queueItem = await NotionSyncQueue.addToQueue(projectId, weekOf)
   if (!queueItem) {
-    console.log(`⏭️ Notion sync already queued/in-progress for project ${projectId}, week ${weekOf}`)
+    console.log(`⏭️ [Notion Sync] Already queued/in-progress for project ${projectId}, week ${weekOf}`)
     return
   }
+  console.log(`✅ [Notion Sync] Queue item created: ${queueItem.id}`)
   
   try {
     // Step 1: Get answers for this project and week
+    console.log(`📥 [Notion Sync] Fetching answers for project ${projectId}, week ${weekOf}`)
     const answers = await Answers.getProjectAnswersForWeek(projectId, weekOf)
     
     if (answers.length === 0) {
-      console.log(`⏭️ No answers found for project ${projectId}, week ${weekOf} - skipping sync`)
+      console.log(`⏭️ [Notion Sync] No answers found for project ${projectId}, week ${weekOf} - skipping sync`)
       await NotionSyncQueue.markCompleted(queueItem.id) // Remove from queue
       return
     }
     
-    console.log(`✅ Found ${answers.length} answers for project ${projectId}`)
+    console.log(`✅ [Notion Sync] Found ${answers.length} answers for project ${projectId}`)
+    console.log(`   [Notion Sync] Answer IDs: ${answers.map(a => a.questionID).join(', ')}`)
     
     // Step 2: Get questions for formatting
+    console.log(`📋 [Notion Sync] Loading questions for formatting`)
     const hasHistory = await Answers.hasBeenReviewedBefore(projectId)
     const questions = await getQuestionsForProject(projectId, hasHistory)
+    console.log(`✅ [Notion Sync] Loaded ${questions.length} questions (hasHistory: ${hasHistory})`)
     
     // Step 3: Format as markdown using review-formatter
     // Import dynamically to avoid circular dependencies
+    console.log(`📝 [Notion Sync] Formatting review as markdown`)
     const { formatReviewAsMarkdown } = await import('./services/review-formatter')
     const markdown = formatReviewAsMarkdown(answers, questions, weekOf)
     
-    console.log(`✅ Formatted review as markdown (${markdown.length} characters)`)
+    console.log(`✅ [Notion Sync] Formatted review as markdown (${markdown.length} characters)`)
+    console.log(`   [Notion Sync] Preview: ${markdown.substring(0, 100)}...`)
     
     // Step 4: Send to main process for Notion API call
+    console.log(`📤 [Notion Sync] Sending to Electron main process`)
     const result = await window.electronAPI.notion.syncReview(projectId, weekOf, markdown)
     
     if (result.success) {
-      console.log(`✅ Notion sync completed for project ${projectId}`)
+      console.log(`✅ [Notion Sync] Completed successfully for project ${projectId}`)
+      if (result.message) {
+        console.log(`   [Notion Sync] ${result.message}`)
+      }
       await NotionSyncQueue.markCompleted(queueItem.id) // Remove from queue
     } else if (result.skipped) {
-      console.log(`⏭️ Notion sync skipped: ${result.reason}`)
+      console.log(`⏭️ [Notion Sync] Skipped: ${result.reason}`)
       await NotionSyncQueue.markCompleted(queueItem.id) // Remove from queue (already synced)
     } else {
-      console.error(`❌ Notion sync failed: ${result.error}`)
+      console.error(`❌ [Notion Sync] Failed: ${result.error}`)
       await NotionSyncQueue.markFailed(queueItem.id, result.error || 'Unknown error')
       throw new Error(result.error || 'Unknown sync error')
     }
   } catch (error) {
-    console.error('❌ Notion sync error:', error)
+    console.error('❌ [Notion Sync] Error:', error)
+    console.error(`   [Notion Sync] Project: ${projectId}, Week: ${weekOf}`)
+    console.error(`   [Notion Sync] Error details:`, error instanceof Error ? error.stack : String(error))
     // Mark as failed (already in queue from line above)
     await NotionSyncQueue.markFailed(queueItem.id, error instanceof Error ? error.message : 'Unknown error')
     throw error
