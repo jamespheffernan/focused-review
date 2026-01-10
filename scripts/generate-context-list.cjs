@@ -55,9 +55,15 @@ function convertTimestamp(timestamp) {
 }
 
 /**
- * Query all active, non-completed tasks
+ * Query all active, available (non-blocked, non-deferred) tasks
+ * Excludes: completed tasks, blocked tasks, deferred tasks, and projects
  */
 function queryActiveTasks(db) {
+  // Get current timestamp in Core Data format (seconds since 2001-01-01)
+  const now = new Date()
+  const referenceDate = new Date('2001-01-01T00:00:00Z').getTime()
+  const currentTimestamp = (now.getTime() - referenceDate) / 1000
+  
   const query = `
     SELECT 
       Task.persistentIdentifier,
@@ -71,12 +77,15 @@ function queryActiveTasks(db) {
     FROM Task
     WHERE Task.dateCompleted IS NULL
       AND Task.projectInfo IS NULL
+      AND Task.blocked = 0
+      AND (Task.effectiveDateToStart IS NULL OR Task.effectiveDateToStart <= ?)
+      AND Task.containingProjectInfo IS NOT NULL
     ORDER BY Task.name
   `
   
   try {
     const stmt = db.prepare(query)
-    return stmt.all()
+    return stmt.all(currentTimestamp)
   } catch (error) {
     console.error('Error querying tasks:', error.message)
     throw new Error(`Failed to query tasks: ${error.message}`)
@@ -323,10 +332,7 @@ function generateHTML(tasksByContext) {
     </div>
 `
     
-    // Page break between major sections (except after last one)
-    if (index < sortedKeys.length - 1) {
-      sectionsHTML += '<div class="page-break"></div>\n'
-    }
+    // No automatic page breaks - let browser handle naturally for printing
   })
   
   const now = new Date()
@@ -353,18 +359,16 @@ function generateHTML(tasksByContext) {
     
     body {
       font-family: 'Courier New', monospace;
-      background-color: #f5f5f0;
+      background-color: white;
       color: #2c2c2c;
-      line-height: 1.6;
+      line-height: 1.4;
+      padding: 0.5in;
     }
     
     .container {
-      max-width: 8.5in;
-      height: 11in;
-      margin: 0 auto;
-      padding: 0.5in;
-      background-color: white;
-      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+      max-width: 100%;
+      margin: 0;
+      padding: 0;
     }
     
     .header {
@@ -387,7 +391,8 @@ function generateHTML(tasksByContext) {
     }
     
     .context-section {
-      margin-bottom: 0.3in;
+      margin-bottom: 0.4in;
+      page-break-after: auto;
       page-break-inside: avoid;
     }
     
@@ -469,11 +474,6 @@ function generateHTML(tasksByContext) {
       border-left: 1px dashed #ccc;
     }
     
-    .page-break {
-      page-break-after: always;
-      height: 0;
-    }
-    
     .footer {
       margin-top: 0.5in;
       padding-top: 0.25in;
@@ -481,28 +481,42 @@ function generateHTML(tasksByContext) {
       font-size: 10px;
       color: #999;
       text-align: center;
+      page-break-inside: avoid;
     }
     
     @media print {
       body {
         background-color: white;
+        padding: 0.5in;
       }
       
       .container {
         max-width: 100%;
-        height: auto;
         margin: 0;
-        padding: 0.5in;
-        box-shadow: none;
+        padding: 0;
+      }
+      
+      .header {
+        page-break-after: avoid;
       }
       
       .context-section {
         page-break-inside: avoid;
+        page-break-after: auto;
       }
       
       .task-row {
         page-break-inside: avoid;
       }
+      
+      .footer {
+        page-break-before: avoid;
+      }
+    }
+    
+    @page {
+      size: A4;
+      margin: 0.5in;
     }
   </style>
 </head>
