@@ -290,38 +290,119 @@ function truncateNote(note, maxLength = 80) {
 }
 
 /**
- * Reorder context sections for A5 booklet printing
- * When printing 2-up on A4 with left-edge binding, the browser prints:
- *   A4 Front: [Page 1 (left) | Page 2 (right)]
- *   A4 Back:  [Page 3 (left) | Page 4 (right)]
- * 
- * After cutting vertically in half and stapling left edge:
- *   Left half: P1 (front) → P3 (back)
- *   Right half: P2 (front) → P4 (back)
- * 
- * This reorders to [1, 3, 2, 4, 5, 7, 6, 8, ...] so that after cutting:
- *   Left half: P1 → P2 ✓
- *   Right half: P3 → P4 ✓
+ * Estimate height of a task in abstract units
+ * Used for page packing
  */
-function reorderForA5Booklet(sortedKeys, tasksByContext) {
-  const reordered = []
+function estimateTaskHeight(task) {
+  // Base height for task row
+  let height = 1.8 
+  // Add for notes
+  if (task.note) height += 1.2
+  return height
+}
+
+/**
+ * Pack contexts into logical pages
+ * Tries to fit multiple contexts on a page, or starts new page if full.
+ * Returns array of pages, where each page is an array of {type, data} items.
+ */
+function packContentIntoPages(tasksByContext, sortedKeys) {
+  const PAGE_CAPACITY = 28 // Conservative estimate of "units" per page
+  const pages = []
+  let currentPage = []
+  let currentHeight = 0
   
-  // Process in batches of 4
-  for (let i = 0; i < sortedKeys.length; i += 4) {
-    const batch = sortedKeys.slice(i, i + 4)
+  // Add Main Header to first page
+  currentPage.push({ type: 'main-header' })
+  currentHeight += 5
+  
+  sortedKeys.forEach(contextKey => {
+    const tasks = sortTasksInGroup(tasksByContext[contextKey])
+    const contextHeaderHeight = 4
     
-    if (batch.length >= 4) {
-      // [0, 1, 2, 3] → [0, 2, 1, 3]
-      reordered.push(batch[0], batch[2], batch[1], batch[3])
-    } else if (batch.length === 3) {
-      // [0, 1, 2] → [0, 2, 1]
-      reordered.push(batch[0], batch[2], batch[1])
-    } else if (batch.length === 2) {
-      // [0, 1] → [0, 1]
-      reordered.push(batch[0], batch[1])
-    } else if (batch.length === 1) {
-      // [0] → [0]
-      reordered.push(batch[0])
+    // Check if context header fits
+    if (currentHeight + contextHeaderHeight > PAGE_CAPACITY && currentPage.length > 0) {
+      pages.push(currentPage)
+      currentPage = []
+      currentHeight = 0
+    }
+    
+    // Add context header
+    currentPage.push({ type: 'context-header', title: contextKey, count: tasks.length })
+    currentHeight += contextHeaderHeight
+    
+    // Add tasks
+    tasks.forEach(task => {
+      const taskHeight = estimateTaskHeight(task)
+      
+      // If task doesn't fit, start new page
+      if (currentHeight + taskHeight > PAGE_CAPACITY) {
+        pages.push(currentPage)
+        currentPage = []
+        currentHeight = 0
+        
+        // If we split a context, maybe repeat header?
+        // For now, simple flow.
+        if (currentPage.length === 0) {
+           currentPage.push({ type: 'context-continuation', title: contextKey })
+           currentHeight += 2
+        }
+      }
+      
+      currentPage.push({ type: 'task', data: task })
+      currentHeight += taskHeight
+    })
+    
+    // Add spacing after context
+    currentHeight += 1
+  })
+  
+  if (currentPage.length > 0) {
+    pages.push(currentPage)
+  }
+  
+  return pages
+}
+
+/**
+ * Reorder pages for 2-up Duplex Cut-and-Stack
+ * Pattern: [0, 2, 3, 1] for every batch of 4 pages
+ * 
+ * Layout on A4 (Front): [Page 0 | Page 2]
+ * Layout on A4 (Back):  [Page 3 | Page 1]
+ * 
+ * Result after cut & stack (Left on Right):
+ * Left Stack: 0 (front), 1 (back)
+ * Right Stack: 2 (front), 3 (back)
+ * 
+ * Stacked: 0, 1, 2, 3... Correct!
+ */
+function reorderPagesForDuplex(pages) {
+  const reordered = []
+  const batchSize = 4
+  
+  // Pad pages to multiple of 4
+  const paddingNeeded = (4 - (pages.length % 4)) % 4
+  for (let i = 0; i < paddingNeeded; i++) {
+    pages.push([{ type: 'spacer' }]) // Blank page
+  }
+  
+  for (let i = 0; i < pages.length; i += batchSize) {
+    const batch = pages.slice(i, i + batchSize)
+    // Map: 0->0, 1->3, 2->1, 3->2 (Wait, let's re-verify)
+    
+    // We want output stream to printer: A, B, C, D
+    // Printer places: Front[A|B], Back[C|D]
+    // Physical L: Front A, Back D.
+    // Physical R: Front B, Back C.
+    // Target L: Page 0 / Page 1.  => A=0, D=1.
+    // Target R: Page 2 / Page 3.  => B=2, C=3.
+    
+    // So: A=0, B=2, C=3, D=1.
+    // Output Order: 0, 2, 3, 1.
+    
+    if (batch.length === 4) {
+      reordered.push(batch[0], batch[2], batch[3], batch[1])
     }
   }
   
@@ -332,53 +413,11 @@ function reorderForA5Booklet(sortedKeys, tasksByContext) {
 // HTML GENERATION
 // ============================================================================
 
-function generateHTML(tasksByContext) {
-  const contextKeys = Object.keys(tasksByContext)
-  const sortedKeys = sortContextKeys(contextKeys)
-  
-  // Build HTML sections
-  let sectionsHTML = ''
-  
-  sortedKeys.forEach((contextKey, index) => {
-    const tasks = sortTasksInGroup(tasksByContext[contextKey])
-    const taskCount = tasks.length
-    
-    // Section header
-    sectionsHTML += `
-    <div class="context-section">
-      <h2 class="context-header">${escapeHtml(contextKey)}</h2>
-      <p class="task-count">${taskCount} task${taskCount !== 1 ? 's' : ''}</p>
-      
-      <div class="task-list">
-`
-    
-    // Tasks in this section
-    tasks.forEach(task => {
-      const flagIndicator = task.flagged ? '🚩 ' : ''
-      const dueDate = task.dueDate ? formatDate(task.dueDate) : ''
-      const dueDateHTML = dueDate ? `<span class="due-date">${dueDate}</span>` : ''
-      const notePreview = task.note ? `<div class="note-preview">${escapeHtml(truncateNote(task.note))}</div>` : ''
-      
-      sectionsHTML += `
-        <div class="task-row">
-          <div class="checkbox">☐</div>
-          <div class="task-content">
-            <div class="task-name">${flagIndicator}${escapeHtml(task.name)}</div>
-            ${dueDateHTML}
-            ${notePreview}
-          </div>
-        </div>
-`
-    })
-    
-    sectionsHTML += `
-      </div>
-    </div>
-`
-    
-    // No automatic page breaks - let browser handle naturally for printing
-  })
-  
+// ============================================================================
+// HTML GENERATION
+// ============================================================================
+
+function generatePagedHTML(pages) {
   const now = new Date()
   const generatedDate = now.toLocaleDateString('en-US', { 
     weekday: 'long', 
@@ -388,7 +427,65 @@ function generateHTML(tasksByContext) {
   })
   const generatedTime = now.toLocaleTimeString('en-US')
   
-  const html = `<!DOCTYPE html>
+  let bodyContent = ''
+  
+  pages.forEach((pageItems, pageIndex) => {
+    bodyContent += `<div class="a5-page">`
+    
+    // If empty page (spacer)
+    if (pageItems.length === 1 && pageItems[0].type === 'spacer') {
+      bodyContent += `<div class="spacer-message">Blank Page for Duplex Layout</div>`
+      bodyContent += `</div>`
+      return
+    }
+    
+    pageItems.forEach(item => {
+      if (item.type === 'main-header') {
+        bodyContent += `
+          <div class="header">
+            <h1>GTD CONTEXT LIST</h1>
+            <div class="header-date">Generated: ${generatedDate} at ${generatedTime}</div>
+          </div>`
+      } else if (item.type === 'context-header') {
+        bodyContent += `
+          <div class="context-section-header">
+            <h2 class="context-header">${escapeHtml(item.title)}</h2>
+            <p class="task-count">${item.count} task${item.count !== 1 ? 's' : ''}</p>
+          </div>`
+      } else if (item.type === 'context-continuation') {
+        bodyContent += `
+          <div class="context-section-header">
+            <h2 class="context-header">${escapeHtml(item.title)} (cont.)</h2>
+          </div>`
+      } else if (item.type === 'task') {
+        const task = item.data
+        const flagIndicator = task.flagged ? '🚩 ' : ''
+        const dueDate = task.dueDate ? formatDate(task.dueDate) : ''
+        const dueDateHTML = dueDate ? `<span class="due-date">${dueDate}</span>` : ''
+        const notePreview = task.note ? `<div class="note-preview">${escapeHtml(truncateNote(task.note))}</div>` : ''
+        
+        bodyContent += `
+          <div class="task-row">
+            <div class="checkbox">☐</div>
+            <div class="task-content">
+              <div class="task-name">${flagIndicator}${escapeHtml(task.name)}</div>
+              ${dueDateHTML}
+              ${notePreview}
+            </div>
+          </div>`
+      }
+    })
+    
+    // Footer on every page
+    bodyContent += `
+      <div class="footer">
+        Page ${pageIndex + 1} • Print 2-up on A4, Duplex, Cut & Stack
+      </div>`
+      
+    bodyContent += `</div>` // End a5-page
+  })
+
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -406,22 +503,42 @@ function generateHTML(tasksByContext) {
       background-color: white;
       color: #2c2c2c;
       line-height: 1.35;
-      padding: 0.1in;
       margin: 0;
+      padding: 0; /* Padding handled by page container */
       font-size: 24px;
+    }
+    
+    .a5-page {
+      width: 100%;
+      height: 100vh; /* Fill the print page */
+      padding: 0.25in;
+      page-break-after: always;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .a5-page:last-child {
+      page-break-after: auto;
+    }
+    
+    .spacer-message {
+      color: #ccc;
+      text-align: center;
+      margin-top: 50%;
+      font-size: 14px;
     }
     
     .container {
       max-width: 100%;
-      margin: 0;
-      padding: 0;
     }
     
     .header {
       text-align: center;
       border-bottom: 1.5px solid #2c2c2c;
       padding-bottom: 0.08in;
-      margin-bottom: 0.08in;
+      margin-bottom: 0.15in;
+      flex-shrink: 0;
     }
     
     .header h1 {
@@ -436,10 +553,10 @@ function generateHTML(tasksByContext) {
       color: #666;
     }
     
-    .context-section {
-      margin-bottom: 0.12in;
-      page-break-after: auto;
-      page-break-inside: avoid;
+    .context-section-header {
+      margin-top: 0.1in;
+      margin-bottom: 0.1in;
+      page-break-after: avoid;
     }
     
     .context-header {
@@ -450,7 +567,6 @@ function generateHTML(tasksByContext) {
       border-left: 4px solid #2c2c2c;
       padding-left: 0.12in;
       margin-bottom: 6px;
-      margin-top: 0.12in;
     }
     
     .task-count {
@@ -460,13 +576,9 @@ function generateHTML(tasksByContext) {
       padding-left: 0.12in;
     }
     
-    .task-list {
-      margin-left: 0.08in;
-    }
-    
     .task-row {
       display: flex;
-      margin-bottom: 10px;
+      margin-bottom: 14px;
       font-size: 24px;
       page-break-inside: avoid;
     }
@@ -506,11 +618,6 @@ function generateHTML(tasksByContext) {
       color: #856404;
     }
     
-    .due-date.overdue {
-      background-color: #f8d7da;
-      color: #721c24;
-    }
-    
     .note-preview {
       font-size: 20px;
       color: #666;
@@ -523,69 +630,50 @@ function generateHTML(tasksByContext) {
     }
     
     .footer {
-      margin-top: 0.15in;
+      margin-top: auto; /* Push to bottom */
       padding-top: 0.1in;
       border-top: 1px solid #ccc;
       font-size: 16px;
       color: #999;
       text-align: center;
-      page-break-inside: avoid;
     }
     
     @media print {
       body {
-        background-color: white;
-        padding: 0.05in;
-        margin: 0;
-      }
-      
-      .container {
-        max-width: 100%;
         margin: 0;
         padding: 0;
       }
-      
-      .header {
-        page-break-after: avoid;
-      }
-      
-      .context-section {
-        page-break-inside: avoid;
-        page-break-after: auto;
-      }
-      
-      .task-row {
-        page-break-inside: avoid;
-      }
-      
-      .footer {
-        page-break-before: avoid;
+      .a5-page {
+        padding: 0.1in;
+        height: 100%;
+        page-break-after: always;
       }
     }
     
     @page {
       size: auto;
-      margin: 0.1in;
+      margin: 0;
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="header">
-      <h1>GTD CONTEXT LIST</h1>
-      <p class="header-date">Generated: ${generatedDate} at ${generatedTime}</p>
-    </div>
-    
-    ${sectionsHTML}
-    
-    <div class="footer">
-      <p>Print 2 pages per sheet on A4, then cut in half for A5 size. Use checkboxes to mark completed tasks.</p>
-    </div>
-  </div>
+  ${bodyContent}
 </body>
 </html>`
+}
+
+function generateHTML(tasksByContext) {
+  // Fallback if needed, but we replace it
+  const contextKeys = Object.keys(tasksByContext)
+  const sortedKeys = sortContextKeys(contextKeys)
   
-  return html
+  // Pack content into pages
+  const pages = packContentIntoPages(tasksByContext, sortedKeys)
+  
+  // Reorder pages for duplex cut-stack
+  const reorderedPages = reorderPagesForDuplex(pages)
+  
+  return generatePagedHTML(reorderedPages)
 }
 
 /**
