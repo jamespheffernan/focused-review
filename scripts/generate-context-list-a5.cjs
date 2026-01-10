@@ -439,13 +439,8 @@ function generateHTML(tasksByContext, orderedKeys) {
     
     .context-section {
       margin-bottom: 0.12in;
-      page-break-before: always;
       page-break-after: auto;
       page-break-inside: avoid;
-    }
-    
-    .context-section:first-child {
-      page-break-before: auto;
     }
     
     .context-header {
