@@ -367,7 +367,8 @@ function generateHTML(tasksByContext) {
       background-color: white;
       color: #2c2c2c;
       line-height: 1.2;
-      padding: 0.3in;
+      padding: 0.15in;
+      margin: 0;
       font-size: 9px;
     }
     
@@ -380,8 +381,8 @@ function generateHTML(tasksByContext) {
     .header {
       text-align: center;
       border-bottom: 1.5px solid #2c2c2c;
-      padding-bottom: 0.15in;
-      margin-bottom: 0.15in;
+      padding-bottom: 0.1in;
+      margin-bottom: 0.1in;
     }
     
     .header h1 {
@@ -397,7 +398,7 @@ function generateHTML(tasksByContext) {
     }
     
     .context-section {
-      margin-bottom: 0.25in;
+      margin-bottom: 0.15in;
       page-break-after: auto;
       page-break-inside: avoid;
     }
@@ -483,8 +484,8 @@ function generateHTML(tasksByContext) {
     }
     
     .footer {
-      margin-top: 0.3in;
-      padding-top: 0.15in;
+      margin-top: 0.15in;
+      padding-top: 0.1in;
       border-top: 1px solid #ccc;
       font-size: 7px;
       color: #999;
@@ -495,7 +496,8 @@ function generateHTML(tasksByContext) {
     @media print {
       body {
         background-color: white;
-        padding: 0.3in;
+        padding: 0.15in;
+        margin: 0;
       }
       
       .container {
@@ -506,11 +508,14 @@ function generateHTML(tasksByContext) {
       
       .header {
         page-break-after: avoid;
+        padding-bottom: 0.1in;
+        margin-bottom: 0.1in;
       }
       
       .context-section {
         page-break-inside: avoid;
         page-break-after: auto;
+        margin-bottom: 0.15in;
       }
       
       .task-row {
@@ -519,12 +524,14 @@ function generateHTML(tasksByContext) {
       
       .footer {
         page-break-before: avoid;
+        margin-top: 0.15in;
+        padding-top: 0.1in;
       }
     }
     
     @page {
       size: A5;
-      margin: 0.3in;
+      margin: 0.15in;
     }
   </style>
 </head>
