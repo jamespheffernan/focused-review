@@ -369,7 +369,7 @@ function generateHTML(tasksByContext) {
       line-height: 1.35;
       padding: 0.1in;
       margin: 0;
-      font-size: 16px;
+      font-size: 18px;
     }
     
     .container {
@@ -386,14 +386,14 @@ function generateHTML(tasksByContext) {
     }
     
     .header h1 {
-      font-size: 24px;
+      font-size: 28px;
       font-weight: bold;
       letter-spacing: 2px;
       margin-bottom: 5px;
     }
     
     .header-date {
-      font-size: 12px;
+      font-size: 14px;
       color: #666;
     }
     
@@ -404,7 +404,7 @@ function generateHTML(tasksByContext) {
     }
     
     .context-header {
-      font-size: 16px;
+      font-size: 18px;
       font-weight: bold;
       text-transform: uppercase;
       letter-spacing: 1px;
@@ -415,7 +415,7 @@ function generateHTML(tasksByContext) {
     }
     
     .task-count {
-      font-size: 11px;
+      font-size: 12px;
       color: #999;
       margin-bottom: 6px;
       padding-left: 0.12in;
@@ -428,20 +428,20 @@ function generateHTML(tasksByContext) {
     .task-row {
       display: flex;
       margin-bottom: 8px;
-      font-size: 16px;
+      font-size: 18px;
       page-break-inside: avoid;
     }
     
     .checkbox {
-      min-width: 22px;
-      height: 22px;
+      min-width: 24px;
+      height: 24px;
       border: 2px solid #2c2c2c;
       display: flex;
       align-items: center;
       justify-content: center;
       margin-right: 10px;
       flex-shrink: 0;
-      font-size: 16px;
+      font-size: 18px;
       background: white;
     }
     
@@ -461,7 +461,7 @@ function generateHTML(tasksByContext) {
       background-color: #fff3cd;
       padding: 2px 6px;
       border-radius: 2px;
-      font-size: 12px;
+      font-size: 14px;
       font-weight: bold;
       margin-right: 8px;
       color: #856404;
@@ -473,7 +473,7 @@ function generateHTML(tasksByContext) {
     }
     
     .note-preview {
-      font-size: 13px;
+      font-size: 15px;
       color: #666;
       font-style: italic;
       margin-top: 3px;
@@ -487,7 +487,7 @@ function generateHTML(tasksByContext) {
       margin-top: 0.15in;
       padding-top: 0.1in;
       border-top: 1px solid #ccc;
-      font-size: 11px;
+      font-size: 12px;
       color: #999;
       text-align: center;
       page-break-inside: avoid;
