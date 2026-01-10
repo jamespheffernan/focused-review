@@ -367,7 +367,7 @@ function generateHTML(tasksByContext) {
       background-color: white;
       color: #2c2c2c;
       line-height: 1.3;
-      padding: 0.2in;
+      padding: 0.1in;
       margin: 0;
       font-size: 11px;
     }
@@ -381,8 +381,8 @@ function generateHTML(tasksByContext) {
     .header {
       text-align: center;
       border-bottom: 1.5px solid #2c2c2c;
-      padding-bottom: 0.1in;
-      margin-bottom: 0.1in;
+      padding-bottom: 0.08in;
+      margin-bottom: 0.08in;
     }
     
     .header h1 {
@@ -398,7 +398,7 @@ function generateHTML(tasksByContext) {
     }
     
     .context-section {
-      margin-bottom: 0.15in;
+      margin-bottom: 0.12in;
       page-break-after: auto;
       page-break-inside: avoid;
     }
@@ -409,16 +409,16 @@ function generateHTML(tasksByContext) {
       text-transform: uppercase;
       letter-spacing: 0.5px;
       border-left: 2.5px solid #2c2c2c;
-      padding-left: 0.12in;
+      padding-left: 0.1in;
       margin-bottom: 4px;
-      margin-top: 0.12in;
+      margin-top: 0.1in;
     }
     
     .task-count {
       font-size: 8px;
       color: #999;
-      margin-bottom: 6px;
-      padding-left: 0.12in;
+      margin-bottom: 5px;
+      padding-left: 0.1in;
     }
     
     .task-list {
@@ -484,8 +484,8 @@ function generateHTML(tasksByContext) {
     }
     
     .footer {
-      margin-top: 0.2in;
-      padding-top: 0.12in;
+      margin-top: 0.15in;
+      padding-top: 0.1in;
       border-top: 1px solid #ccc;
       font-size: 8px;
       color: #999;
@@ -496,7 +496,7 @@ function generateHTML(tasksByContext) {
     @media print {
       body {
         background-color: white;
-        padding: 0.2in;
+        padding: 0.05in;
         margin: 0;
       }
       
@@ -508,14 +508,11 @@ function generateHTML(tasksByContext) {
       
       .header {
         page-break-after: avoid;
-        padding-bottom: 0.1in;
-        margin-bottom: 0.1in;
       }
       
       .context-section {
         page-break-inside: avoid;
         page-break-after: auto;
-        margin-bottom: 0.15in;
       }
       
       .task-row {
@@ -524,14 +521,12 @@ function generateHTML(tasksByContext) {
       
       .footer {
         page-break-before: avoid;
-        margin-top: 0.15in;
-        padding-top: 0.1in;
       }
     }
     
     @page {
-      size: A5;
-      margin: 0.2in;
+      size: auto;
+      margin: 0.1in;
     }
   </style>
 </head>
