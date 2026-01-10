@@ -332,15 +332,14 @@ function reorderForA5Booklet(sortedKeys, tasksByContext) {
 // HTML GENERATION
 // ============================================================================
 
-function generateHTML(tasksByContext, orderedKeys) {
-  // Use provided ordered keys, or fall back to sorting if not provided
-  const contextKeys = orderedKeys || Object.keys(tasksByContext)
-  const keysToUse = orderedKeys ? contextKeys : sortContextKeys(contextKeys)
+function generateHTML(tasksByContext) {
+  const contextKeys = Object.keys(tasksByContext)
+  const sortedKeys = sortContextKeys(contextKeys)
   
   // Build HTML sections
   let sectionsHTML = ''
   
-  keysToUse.forEach((contextKey, index) => {
+  sortedKeys.forEach((contextKey, index) => {
     const tasks = sortTasksInGroup(tasksByContext[contextKey])
     const taskCount = tasks.length
     
@@ -643,15 +642,10 @@ async function main() {
       
       // Group and sort
       const tasksByContext = groupTasksByContext(tasks)
-      const contextKeys = Object.keys(tasksByContext)
-      const sortedKeys = sortContextKeys(contextKeys)
-      console.log(`✅ Grouped into ${contextKeys.length} context sections\n`)
+      console.log(`✅ Grouped into ${Object.keys(tasksByContext).length} context sections\n`)
       
-      // Reorder for A5 booklet printing (2-up on A4, cut and staple on left)
-      const reorderedKeys = reorderForA5Booklet(sortedKeys, tasksByContext)
-      
-      // Generate HTML with reordered sections
-      const html = generateHTML(tasksByContext, reorderedKeys)
+      // Generate HTML
+      const html = generateHTML(tasksByContext)
       
       // Write to file
       fs.writeFileSync(outputPath, html, 'utf-8')
