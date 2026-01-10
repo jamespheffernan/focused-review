@@ -56,7 +56,7 @@ function convertTimestamp(timestamp) {
 
 /**
  * Query all active, available (non-blocked, non-deferred) tasks
- * Excludes: completed tasks, blocked tasks, deferred tasks, and projects
+ * Excludes: completed tasks, blocked tasks, deferred tasks, projects, and tasks in non-active projects
  */
 function queryActiveTasks(db) {
   // Get current timestamp in Core Data format (seconds since 2001-01-01)
@@ -75,11 +75,15 @@ function queryActiveTasks(db) {
       Task.blocked,
       Task.effectiveDateToStart
     FROM Task
+    INNER JOIN ProjectInfo ON Task.containingProjectInfo = ProjectInfo.pk
     WHERE Task.dateCompleted IS NULL
       AND Task.projectInfo IS NULL
       AND Task.blocked = 0
       AND (Task.effectiveDateToStart IS NULL OR Task.effectiveDateToStart <= ?)
       AND Task.containingProjectInfo IS NOT NULL
+      AND Task.name IS NOT NULL
+      AND LENGTH(Task.name) > 0
+      AND ProjectInfo.status = 'active'
     ORDER BY Task.name
   `
   
