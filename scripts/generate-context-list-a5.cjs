@@ -366,10 +366,10 @@ function generateHTML(tasksByContext) {
       font-family: 'Courier New', monospace;
       background-color: white;
       color: #2c2c2c;
-      line-height: 1.2;
-      padding: 0.15in;
+      line-height: 1.3;
+      padding: 0.2in;
       margin: 0;
-      font-size: 9px;
+      font-size: 11px;
     }
     
     .container {
@@ -386,14 +386,14 @@ function generateHTML(tasksByContext) {
     }
     
     .header h1 {
-      font-size: 16px;
+      font-size: 18px;
       font-weight: bold;
       letter-spacing: 1.5px;
-      margin-bottom: 3px;
+      margin-bottom: 4px;
     }
     
     .header-date {
-      font-size: 8px;
+      font-size: 9px;
       color: #666;
     }
     
@@ -404,21 +404,21 @@ function generateHTML(tasksByContext) {
     }
     
     .context-header {
-      font-size: 10px;
+      font-size: 12px;
       font-weight: bold;
       text-transform: uppercase;
       letter-spacing: 0.5px;
-      border-left: 2px solid #2c2c2c;
-      padding-left: 0.1in;
-      margin-bottom: 3px;
-      margin-top: 0.1in;
+      border-left: 2.5px solid #2c2c2c;
+      padding-left: 0.12in;
+      margin-bottom: 4px;
+      margin-top: 0.12in;
     }
     
     .task-count {
-      font-size: 7px;
+      font-size: 8px;
       color: #999;
-      margin-bottom: 5px;
-      padding-left: 0.1in;
+      margin-bottom: 6px;
+      padding-left: 0.12in;
     }
     
     .task-list {
@@ -427,21 +427,21 @@ function generateHTML(tasksByContext) {
     
     .task-row {
       display: flex;
-      margin-bottom: 5px;
-      font-size: 9px;
+      margin-bottom: 6px;
+      font-size: 11px;
       page-break-inside: avoid;
     }
     
     .checkbox {
-      min-width: 14px;
-      height: 14px;
-      border: 1px solid #2c2c2c;
+      min-width: 16px;
+      height: 16px;
+      border: 1.5px solid #2c2c2c;
       display: flex;
       align-items: center;
       justify-content: center;
-      margin-right: 6px;
+      margin-right: 7px;
       flex-shrink: 0;
-      font-size: 10px;
+      font-size: 12px;
       background: white;
     }
     
@@ -459,11 +459,11 @@ function generateHTML(tasksByContext) {
     .due-date {
       display: inline-block;
       background-color: #fff3cd;
-      padding: 1px 4px;
-      border-radius: 1px;
-      font-size: 7px;
+      padding: 2px 5px;
+      border-radius: 2px;
+      font-size: 8px;
       font-weight: bold;
-      margin-right: 5px;
+      margin-right: 6px;
       color: #856404;
     }
     
@@ -473,21 +473,21 @@ function generateHTML(tasksByContext) {
     }
     
     .note-preview {
-      font-size: 7px;
+      font-size: 9px;
       color: #666;
       font-style: italic;
-      margin-top: 1px;
+      margin-top: 2px;
       margin-left: 0;
-      padding-left: 5px;
+      padding-left: 6px;
       border-left: 1px dashed #ccc;
-      line-height: 1.2;
+      line-height: 1.3;
     }
     
     .footer {
-      margin-top: 0.15in;
-      padding-top: 0.1in;
+      margin-top: 0.2in;
+      padding-top: 0.12in;
       border-top: 1px solid #ccc;
-      font-size: 7px;
+      font-size: 8px;
       color: #999;
       text-align: center;
       page-break-inside: avoid;
@@ -496,7 +496,7 @@ function generateHTML(tasksByContext) {
     @media print {
       body {
         background-color: white;
-        padding: 0.15in;
+        padding: 0.2in;
         margin: 0;
       }
       
@@ -531,7 +531,7 @@ function generateHTML(tasksByContext) {
     
     @page {
       size: A5;
-      margin: 0.15in;
+      margin: 0.2in;
     }
   </style>
 </head>
