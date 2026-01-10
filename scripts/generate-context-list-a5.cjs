@@ -289,18 +289,58 @@ function truncateNote(note, maxLength = 80) {
   return note.substring(0, maxLength) + '...'
 }
 
+/**
+ * Reorder context sections for A5 booklet printing
+ * When printing 2-up on A4 with left-edge binding, the browser prints:
+ *   A4 Front: [Page 1 (left) | Page 2 (right)]
+ *   A4 Back:  [Page 3 (left) | Page 4 (right)]
+ * 
+ * After cutting vertically in half and stapling left edge:
+ *   Left half: P1 (front) → P3 (back)
+ *   Right half: P2 (front) → P4 (back)
+ * 
+ * This reorders to [1, 3, 2, 4, 5, 7, 6, 8, ...] so that after cutting:
+ *   Left half: P1 → P2 ✓
+ *   Right half: P3 → P4 ✓
+ */
+function reorderForA5Booklet(sortedKeys, tasksByContext) {
+  const reordered = []
+  
+  // Process in batches of 4
+  for (let i = 0; i < sortedKeys.length; i += 4) {
+    const batch = sortedKeys.slice(i, i + 4)
+    
+    if (batch.length >= 4) {
+      // [0, 1, 2, 3] → [0, 2, 1, 3]
+      reordered.push(batch[0], batch[2], batch[1], batch[3])
+    } else if (batch.length === 3) {
+      // [0, 1, 2] → [0, 2, 1]
+      reordered.push(batch[0], batch[2], batch[1])
+    } else if (batch.length === 2) {
+      // [0, 1] → [0, 1]
+      reordered.push(batch[0], batch[1])
+    } else if (batch.length === 1) {
+      // [0] → [0]
+      reordered.push(batch[0])
+    }
+  }
+  
+  return reordered
+}
+
 // ============================================================================
 // HTML GENERATION
 // ============================================================================
 
-function generateHTML(tasksByContext) {
-  const contextKeys = Object.keys(tasksByContext)
-  const sortedKeys = sortContextKeys(contextKeys)
+function generateHTML(tasksByContext, orderedKeys) {
+  // Use provided ordered keys, or fall back to sorting if not provided
+  const contextKeys = orderedKeys || Object.keys(tasksByContext)
+  const keysToUse = orderedKeys ? contextKeys : sortContextKeys(contextKeys)
   
   // Build HTML sections
   let sectionsHTML = ''
   
-  sortedKeys.forEach((contextKey, index) => {
+  keysToUse.forEach((contextKey, index) => {
     const tasks = sortTasksInGroup(tasksByContext[contextKey])
     const taskCount = tasks.length
     
@@ -399,8 +439,13 @@ function generateHTML(tasksByContext) {
     
     .context-section {
       margin-bottom: 0.12in;
+      page-break-before: always;
       page-break-after: auto;
       page-break-inside: avoid;
+    }
+    
+    .context-section:first-child {
+      page-break-before: auto;
     }
     
     .context-header {
@@ -603,10 +648,15 @@ async function main() {
       
       // Group and sort
       const tasksByContext = groupTasksByContext(tasks)
-      console.log(`✅ Grouped into ${Object.keys(tasksByContext).length} context sections\n`)
+      const contextKeys = Object.keys(tasksByContext)
+      const sortedKeys = sortContextKeys(contextKeys)
+      console.log(`✅ Grouped into ${contextKeys.length} context sections\n`)
       
-      // Generate HTML
-      const html = generateHTML(tasksByContext)
+      // Reorder for A5 booklet printing (2-up on A4, cut and staple on left)
+      const reorderedKeys = reorderForA5Booklet(sortedKeys, tasksByContext)
+      
+      // Generate HTML with reordered sections
+      const html = generateHTML(tasksByContext, reorderedKeys)
       
       // Write to file
       fs.writeFileSync(outputPath, html, 'utf-8')
