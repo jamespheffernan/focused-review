@@ -369,7 +369,7 @@ function generateHTML(tasksByContext) {
       line-height: 1.35;
       padding: 0.1in;
       margin: 0;
-      font-size: 18px;
+      font-size: 24px;
     }
     
     .container {
@@ -386,14 +386,14 @@ function generateHTML(tasksByContext) {
     }
     
     .header h1 {
-      font-size: 28px;
+      font-size: 36px;
       font-weight: bold;
       letter-spacing: 2px;
-      margin-bottom: 5px;
+      margin-bottom: 6px;
     }
     
     .header-date {
-      font-size: 14px;
+      font-size: 18px;
       color: #666;
     }
     
@@ -404,18 +404,18 @@ function generateHTML(tasksByContext) {
     }
     
     .context-header {
-      font-size: 18px;
+      font-size: 24px;
       font-weight: bold;
       text-transform: uppercase;
       letter-spacing: 1px;
-      border-left: 3px solid #2c2c2c;
+      border-left: 4px solid #2c2c2c;
       padding-left: 0.12in;
-      margin-bottom: 5px;
+      margin-bottom: 6px;
       margin-top: 0.12in;
     }
     
     .task-count {
-      font-size: 12px;
+      font-size: 16px;
       color: #999;
       margin-bottom: 6px;
       padding-left: 0.12in;
@@ -427,21 +427,21 @@ function generateHTML(tasksByContext) {
     
     .task-row {
       display: flex;
-      margin-bottom: 8px;
-      font-size: 18px;
+      margin-bottom: 10px;
+      font-size: 24px;
       page-break-inside: avoid;
     }
     
     .checkbox {
-      min-width: 24px;
-      height: 24px;
-      border: 2px solid #2c2c2c;
+      min-width: 32px;
+      height: 32px;
+      border: 2.5px solid #2c2c2c;
       display: flex;
       align-items: center;
       justify-content: center;
-      margin-right: 10px;
+      margin-right: 12px;
       flex-shrink: 0;
-      font-size: 18px;
+      font-size: 24px;
       background: white;
     }
     
@@ -459,11 +459,11 @@ function generateHTML(tasksByContext) {
     .due-date {
       display: inline-block;
       background-color: #fff3cd;
-      padding: 2px 6px;
-      border-radius: 2px;
-      font-size: 14px;
+      padding: 3px 8px;
+      border-radius: 3px;
+      font-size: 18px;
       font-weight: bold;
-      margin-right: 8px;
+      margin-right: 10px;
       color: #856404;
     }
     
@@ -473,13 +473,13 @@ function generateHTML(tasksByContext) {
     }
     
     .note-preview {
-      font-size: 15px;
+      font-size: 20px;
       color: #666;
       font-style: italic;
-      margin-top: 3px;
+      margin-top: 4px;
       margin-left: 0;
-      padding-left: 8px;
-      border-left: 1.5px dashed #ccc;
+      padding-left: 10px;
+      border-left: 2px dashed #ccc;
       line-height: 1.35;
     }
     
@@ -487,7 +487,7 @@ function generateHTML(tasksByContext) {
       margin-top: 0.15in;
       padding-top: 0.1in;
       border-top: 1px solid #ccc;
-      font-size: 12px;
+      font-size: 16px;
       color: #999;
       text-align: center;
       page-break-inside: avoid;
