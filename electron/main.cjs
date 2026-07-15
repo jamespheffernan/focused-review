@@ -2065,8 +2065,8 @@ ipcMain.handle('notion:is-configured', async () => {
     console.log('[notion:is-configured] Checking environment variables:')
     console.log(`  NOTION_TOKEN: ${notionToken ? 'Set' : 'Not set'}`)
     console.log(`  NOTION_PROJECT_DB: ${notionDb ? 'Set' : 'Not set'}`)
-    console.log(`  NOTION_ARCHIVE_DB: ${archiveDb ? archiveDb : 'Not set'}`)
-    console.log(`  NOTION_SOMEDAY_DB: ${somedayDb ? somedayDb : 'Not set'}`)
+    console.log(`  NOTION_ARCHIVE_DB: ${archiveDb ? 'Set' : 'Not set'}`)
+    console.log(`  NOTION_SOMEDAY_DB: ${somedayDb ? 'Set' : 'Not set'}`)
     console.log(`  Someday/Maybe databases: ${somedayDatabases.length}`)
     
     return {

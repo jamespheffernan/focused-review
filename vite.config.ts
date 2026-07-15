@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
@@ -47,6 +47,10 @@ export default defineConfig(() => {
           entryFileNames: 'assets/[name]-[hash].js'
         }
       }
+    },
+    test: {
+      // Electron/CDP scenarios use their own runner under `npm run test:e2e`.
+      exclude: ['tests/**', 'node_modules/**', 'dist/**']
     }
   }
 })

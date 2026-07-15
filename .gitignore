@@ -12,6 +12,16 @@ dist
 dist-ssr
 dist-electron
 *.local
+.env
+.env.*
+!.env.example
+
+# Personal exports and local databases
+*.db
+*.sqlite
+*.sqlite3
+*.opml
+*.pdf
 
 # Editor directories and files
 .vscode/*

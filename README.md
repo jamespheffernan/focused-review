@@ -110,7 +110,7 @@ When you mark a project reviewed:
 - **No Notion page found**: Ensure project exists in omnifocus-notion-sync database with correct OF-ID
 - **Duplicate entries**: The app checks for duplicates automatically, but manual duplication may occur if you re-review the same week
 
-See `docs/omnifocus-notion-sync/README.md` for detailed Notion setup instructions.
+The environment variables above are sufficient for the optional Notion integration. Keep tokens and database identifiers in your shell environment; never commit them to the repository.
 
 ---
 
@@ -166,7 +166,7 @@ Personalize your review experience with 11 beautiful themes:
 
 ### Prerequisites
 - macOS (for OmniFocus integration)
-- Node.js 18+ and npm
+- Node.js 22 and npm
 - **OmniFocus 4** (required)
 
 ### Development Setup
@@ -187,11 +187,11 @@ npm run electron:build
 
 ### OmniFocus Plug-In Setup (Required for Writes)
 
-All task and project mutations now run inside OmniFocus via the **Blinders Bridge** plug-in. Install it once and keep it in sync whenever `weekly-review-hud/omnifocus-plugin/com.example.blinders.omnijs` changes.
+All task and project mutations now run inside OmniFocus via the **Blinders Bridge** plug-in. Install it once and keep it in sync whenever `omnifocus-plugin/com.example.blinders.omnijs` changes.
 
 1. Copy the plug-in into OmniFocus’ Automation folder:
    ```bash
-   cp weekly-review-hud/omnifocus-plugin/com.example.blinders.omnijs \\
+   cp omnifocus-plugin/com.example.blinders.omnijs \\
       ~/Library/Application\\ Scripts/com.omnigroup.OmniFocus4/com.example.blinders.omnijs
    ```
 2. In OmniFocus: `Automation → Configure Plug-Ins…` and link `~/Library/Application Scripts/com.omnigroup.OmniFocus4`.
@@ -199,7 +199,7 @@ All task and project mutations now run inside OmniFocus via the **Blinders Bridg
 4. Approve the Script Security prompt with “Always Allow” the first time Electron triggers the plug-in.
 5. Run the smoke test to verify every action end-to-end:
    ```bash
-   node weekly-review-hud/scripts/test-omnifocus-plugin.cjs
+   node scripts/test-omnifocus-plugin.cjs
    ```
 
 See [`docs/OMNIFOCUS_PLUGIN_SETUP.md`](docs/OMNIFOCUS_PLUGIN_SETUP.md) for detailed setup + troubleshooting notes.
@@ -238,7 +238,7 @@ See [`docs/OMNIFOCUS_PLUGIN_SETUP.md`](docs/OMNIFOCUS_PLUGIN_SETUP.md) for detai
 ## Architecture
 
 ### Tech Stack
-- **Frontend**: React 18 + TypeScript + Vite
+- **Frontend**: React 19 + TypeScript + Vite
 - **Desktop**: Electron
 - **Database**: Dexie (IndexedDB wrapper)
 - **Styling**: CSS with glassmorphism effects
@@ -262,7 +262,7 @@ See [`docs/OMNIFOCUS_PLUGIN_SETUP.md`](docs/OMNIFOCUS_PLUGIN_SETUP.md) for detai
 ## Project Structure
 
 ```
-weekly-review-hud/
+blinders/
 ├── electron/           # Electron main process
 │   ├── main.cjs       # Main process, IPC handlers, JXA scripts
 │   └── preload.cjs    # Preload script for secure IPC
@@ -319,6 +319,14 @@ npm run electron:build
 - The app uses smart caching to minimize OmniFocus queries
 - Only sync when needed using the "Sync from OmniFocus" button
 - Check the "Last synced" timestamp to avoid redundant syncs
+
+## Privacy and local data
+
+Blinders reads personal project and task data from OmniFocus and can optionally connect to Notion. Keep tokens, database identifiers, exported task data, screenshots, and local database files out of Git. The repository intentionally contains source and generic documentation only.
+
+## License
+
+No license has been granted. Copyright remains with the project owner.
 
 ## Troubleshooting
 
